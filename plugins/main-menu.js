@@ -75,6 +75,8 @@ async execute(sock, m) {
 │ ᪣ ${prefix}ᴛᴀɢᴍᴇ
 │ ᪣ ${prefix}ᴄᴏᴜᴘʟᴇᴘᴘ
 │ ᪣ ${prefix}ɢʀᴏᴜᴘ
+│ ᪣ ${prefix}ᴍᴜᴛᴇ
+│ ᪣ ${prefix}ᴜɴᴍᴜᴛᴇ
 │
 ├─ム *sᴛᴀᴛᴜs*
 │ ᪣ ${prefix}ɢsᴛᴀᴛᴜs
