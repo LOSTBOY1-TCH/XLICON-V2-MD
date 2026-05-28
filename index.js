@@ -1068,15 +1068,18 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`🌐 Web server running at http:
+    console.log(`🌐 Web server running at http://localhost:${PORT}`);
     console.log(`📁 Session folder: ${path.resolve(AUTH_FOLDER)}`);
     loadPrefix();
 });
 
 process.on('SIGINT', () => {
     console.log('\n👋 Shutting down gracefully...');
+    
     if (presenceInterval) clearInterval(presenceInterval);
+
     if (sock) sock.end();
+
     process.exit(0);
 });
 
@@ -1084,6 +1087,6 @@ process.on('uncaughtException', (err) => {
     console.error('⚠️ Uncaught Exception:', err);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
     console.error('⚠️ Unhandled Rejection:', reason);
 });
