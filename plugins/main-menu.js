@@ -42,16 +42,26 @@ async execute(sock, m) {
 ┌─ム ᴀᴠᴀɪʟᴀʙʟᴇ ᴄᴏᴍᴍᴀɴᴅs
 │
 ├─ム *ɢᴇɴᴇʀᴀʟ*
+│ ᪣ ${prefix}ᴀᴜᴛᴏʀɪsᴇ
 │ ᪣ ${prefix}ᴀʟɪᴠᴇ
 │ ᪣ ${prefix}ᴘɪɴɢ
 │ ᪣ ${prefix}ᴜᴘᴛɪᴍᴇ
 │ ᪣ ${prefix}ᴏᴡɴᴇʀ
+│ ᪣ ${prefix}ᴄʀᴇᴀᴛᴏʀ
+│ ᪣ ${prefix}sᴇʟғ
+│ ᪣ ${prefix}sᴇᴛᴘʀᴇғɪx
+│ ᪣ ${prefix}ʟᴏɢɢᴇʀ
+│ ᪣ ${prefix}ᴇxᴇᴄ
 │ ᪣ ${prefix}ᴍᴇɴᴜ2
 │
 ├─ム *ᴅᴏᴡɴʟᴏᴀᴅᴇʀs*
 │ ᪣ ${prefix}ᴛɪᴋᴛᴏᴋ / ${prefix}ᴛᴛ
-│ ᪣ ${prefix}ʏᴛᴍᴘ3
+│ ᪣ ${prefix}ʏᴛᴅʟ / ${prefix}ʏᴛᴍᴘ3
+│ ᪣ ${prefix}ʏᴛsᴇᴀʀᴄʜ
 │ ᪣ ${prefix}ɪɢ
+│ ᪣ ${prefix}sᴀᴠᴇ
+│ ᪣ ${prefix}ᴛᴏᴜʀʟ
+│ ᪣ ${prefix}ᴛᴏᴀᴜᴅɪᴏ
 │
 ├─ム *ᴛᴏᴏʟs*
 │ ᪣ ${prefix}sᴛɪᴄᴋᴇʀ
@@ -59,33 +69,48 @@ async execute(sock, m) {
 │ ᪣ ${prefix}ᴛᴛs
 │ ᪣ ${prefix}ᴘᴏʟʟ
 │ ᪣ ${prefix}sʜᴀᴢᴀᴍ
+│ ᪣ ${prefix}ɪᴘsᴛᴀʟᴋ
+│ ᪣ ${prefix}ᴄᴏᴍᴘʀᴇss
+│ ᪣ ${prefix}ɪᴍɢ
+│ ᪣ ${prefix}ᴘᴘ
+│ ᪣ ${prefix}sᴇᴛᴘᴘ
+│ ᪣ ${prefix}ʀᴇᴛᴀɢ
+│ ᪣ ${prefix}ᴠɪᴇᴡᴏɴᴄᴇ
+│ ᪣ ${prefix}ᴛᴡᴇᴇᴛ
+│ ᪣ ${prefix}ᴅᴇʟᴛᴍᴘ
 │
 ├─ム *ᴀɪ*
 │ ᪣ ${prefix}ᴀɪ
 │ ᪣ ${prefix}ᴀɪ-sᴇᴀʀᴄʜ
 │ ᪣ ${prefix}ᴀɪᴠ
 │ ᪣ ${prefix}ɢᴇɴ
+│ ᪣ ${prefix}ɢᴇɴ2
 │
 ├─ム *ғᴜɴ*
 │ ᪣ ${prefix}ʙʟᴜᴇ
+│ ᪣ ${prefix}ᴄᴏᴜᴘʟᴇᴘᴘ
 │
 ├─ム *ɢʀᴏᴜᴘ*
 │ ᪣ ${prefix}ᴛᴀɢᴀʟʟ
 │ ᪣ ${prefix}ᴛᴀɢᴀʟʟ1
 │ ᪣ ${prefix}ᴛᴀɢᴍᴇ
-│ ᪣ ${prefix}ᴄᴏᴜᴘʟᴇᴘᴘ
+│ ᪣ ${prefix}ᴀʟʟ
 │ ᪣ ${prefix}ɢʀᴏᴜᴘ
-│ ᪣ ${prefix}ᴍᴜᴛᴇ
-│ ᪣ ${prefix}ᴜɴᴍᴜᴛᴇ
-│
-├─ム *sᴛᴀᴛᴜs*
+│ ᪣ ${prefix}ᴡᴇʟᴄᴏᴍᴇ
+│ ᪣ ${prefix}ᴊᴏɪɴ
+│ ᪣ ${prefix}ʟᴇᴀᴠᴇ
+│ ᪣ ${prefix}ᴍᴇɴᴛɪᴏɴ-ᴏᴡɴᴇʀ
+│ ᪣ ${prefix}ᴀᴜᴛᴏʀᴇᴀᴄᴛ
+│ ᪣ ${prefix}ᴋɪᴄᴋ
 │ ᪣ ${prefix}ɢsᴛᴀᴛᴜs
 │
 ├─ム *ᴄʜᴀɴɴᴇʟ*
 │ ᪣ ${prefix}ᴄʜᴀɴɴᴇʟɪᴅ
+│ ᪣ ${prefix}ᴜᴘᴄʜ
 │
-├─ム *ᴀᴅᴍɪɴ*
-│ ᪣ ${prefix}ᴋɪᴄᴋ
+├─ム *ᴏᴡɴᴇʀ*
+│ ᪣ ${prefix}ᴀᴅᴅᴏᴡɴᴇʀ
+│ ᪣ ${prefix}ʀᴇᴍᴏᴠᴇᴏᴡɴᴇʀ
 │
 ╰─────────◆────────╯
 
