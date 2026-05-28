@@ -39,6 +39,8 @@ module.exports = {
 │ ᪣ ᴍᴏʙɪʟᴇ: ${d.mobile ? 'ʏᴇs' : 'ɴᴏ'}
 │ ᪣ ᴘʀᴏxʏ: ${d.proxy ? 'ʏᴇs' : 'ɴᴏ'}
 │ ᪣ ʜᴏsᴛɪɴɢ: ${d.hosting ? 'ʏᴇs' : 'ɴᴏ'}
+│
+│ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʟᴏsᴛʙᴏʏ
 ╰─────────◆────────╯`;
 
             await m.reply(result);
