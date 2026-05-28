@@ -40,6 +40,8 @@ module.exports = {
 │ ᪣ ᴄʀᴇᴀᴛᴇᴅ: ${new Date(d.created_at).toLocaleDateString('en-GB')}
 │ ᪣ ᴜᴘᴅᴀᴛᴇᴅ: ${new Date(d.updated_at).toLocaleDateString('en-GB')}
 │ ᪣ ᴘʀᴏꜰɪʟᴇ: ${d.html_url}
+│
+│ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʟᴏsᴛʙᴏʏ
 ╰─────────◆────────╯`;
 
             const avatarBuffer = (await axios.get(d.avatar_url, { responseType: 'arraybuffer' })).data;
