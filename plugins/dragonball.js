@@ -28,7 +28,7 @@ module.exports = {
 │
 │ ᪣ ᴛᴇxᴛ: ${text}
 │
-│ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʟᴏsᴛʙᴏʏ
+│ > ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʟᴏsᴛʙᴏʏ
 ╰─────────◆────────╯`;
 
             await m.reply(imageBuffer, {
