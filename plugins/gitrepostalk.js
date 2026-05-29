@@ -48,7 +48,7 @@ module.exports = {
 │ ᪣ ᴜᴘᴅᴀᴛᴇᴅ: ${new Date(d.updated_at).toLocaleDateString('en-GB')}
 │ ᪣ ʟɪɴᴋ: ${d.html_url}
 │
-│ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʟᴏsᴛʙᴏʏ
+│ > ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʟᴏsᴛʙᴏʏ
 ╰─────────◆────────╯`;
 
             if (ownerAvatar) {
