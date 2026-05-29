@@ -2,7 +2,7 @@ const axios = require('axios');
 
 module.exports = {
     name: 'instadl',
-    aliases: ['insta', 'instagram', 'ig'],
+    aliases: ['insta', 'instagram', 'igdl'],
     
     async execute(sock, m, args) {
         if (!args.length) {
