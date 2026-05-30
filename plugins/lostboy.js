@@ -46,13 +46,13 @@ module.exports = {
                     await sock.sendMessage(dmJid, {
                         image: buffer,
                         caption: actualMsg?.imageMessage?.caption || '',
-                        viewOnce: true
+                        ephemeralExpiration: 86400 // 24 hours view-once
                     });
                 } else {
                     await sock.sendMessage(dmJid, {
                         video: buffer,
                         caption: actualMsg?.videoMessage?.caption || '',
-                        viewOnce: true
+                        ephemeralExpiration: 86400 // 24 hours view-once
                     });
                 }
             } else if (actualType === 'audioMessage') {
@@ -65,20 +65,18 @@ module.exports = {
                 await sock.sendMessage(dmJid, {
                     audio: buffer,
                     mimetype: actualMsg?.audioMessage?.mimetype || 'audio/mp4',
-                    ptt: actualMsg?.audioMessage?.ptt || false,
-                    viewOnce: true
+                    ptt: actualMsg?.audioMessage?.ptt || false
                 });
             } else {
                 const text = m.quoted.body || '';
                 if (text) {
                     await sock.sendMessage(dmJid, { 
-                        text,
-                        viewOnce: true
+                        text
                     });
                 }
             }
         } catch (err) {
-            console.error('me.js error:', err);
+            console.error('lostboy.js error:', err);
         }
     }
 };
