@@ -1,11 +1,12 @@
-const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { downloadMediaMessage, extractMessageContent } = require('@whiskeysockets/baileys');
 
 let antideleteEnabled = false;
 const msgCache = new Map();
-const MAX_CACHE = 1000; // Increased to 1000 messages
-const MAX_AGE = 10 * 60 * 1000; // 10 minutes cache lifetime
+const MAX_CACHE = 2000; // Increased cache size for better recovery
+const MAX_AGE = 30 * 60 * 1000; // 30 minutes cache lifetime
+const messageArchive = new Map(); // Archive for deleted messages
 
-// Auto-clean old messages every minute
+// Auto-clean old messages every 2 minutes
 setInterval(() => {
     const now = Date.now();
     let cleaned = 0;
@@ -18,7 +19,7 @@ setInterval(() => {
     if (cleaned > 0) {
         console.log(`[Anti-Delete] Cleaned ${cleaned} expired messages. Cache size: ${msgCache.size}`);
     }
-}, 60000); // Clean every minute
+}, 120000); // Clean every 2 minutes
 
 module.exports = {
     name: 'antidelete',
@@ -34,108 +35,113 @@ module.exports = {
         
         if (arg === 'on') {
             antideleteEnabled = true;
-            return m.reply('┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ᴏɴ ✅\n│ ʀᴇᴄᴏᴠᴇʀs: ᴛᴇxᴛ, ɪᴍᴀɢᴇs\n│ ᴠɪᴅᴇᴏs, ᴅᴏᴄs, ᴠɪᴇᴡᴏɴᴄᴇ\n│ ᴄᴀᴄʜᴇ ᴛɪᴍᴇ: 10 ᴍɪɴᴜᴛᴇs\n│ ᴍᴀx ᴄᴀᴄʜᴇ: 1000 ᴍsɢs\n╰─────────◆────────╯');
+            return m.reply('┌─ museo ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ᴏɴ ✅\n│ ʀᴇᴄᴏᴠᴇʀs: ᴛᴇxᴛ, ɪᴍᴀɢᴇs\n│ ᴠɪᴅᴇᴏs, ᴅᴏᴄs, ᴀᴜᴅɪᴏ\n│ ᴄᴀᴄʜᴇ ᴛɪᴍᴇ: 30 ᴍɪɴᴜᴛᴇs\n│ ᴍᴀx ᴄᴀᴄʜᴇ: 2000 ᴍsɢs\n╰─────────◆────────╯');
         }
         
         if (arg === 'off') {
             antideleteEnabled = false;
             msgCache.clear();
+            messageArchive.clear();
             return m.reply('┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ᴏꜰꜰ ❌\n│ ᴄᴀᴄʜᴇ ᴄʟᴇᴀʀᴇᴅ ✅\n╰─────────◆────────╯');
         }
         
-        return m.reply(`┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ${antideleteEnabled ? 'ᴏɴ ✅' : 'ᴏꜰꜰ ❌'}\n│ ᴄᴀᴄʜᴇᴅ: ${msgCache.size}/1000 ᴍsɢs\n│ ᴜsᴀɢᴇ: .antidelete on/off\n╰─────────◆────────╯`);
+        return m.reply(`┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ${antideleteEnabled ? 'ᴏɴ ✅' : 'ᴏꜰꜰ ❌'}\n│ ᴄᴀᴄʜᴇᴅ: ${msgCache.size}/2000 ᴍsɢs\n│ ᴀʀᴄʜɪᴠᴇ: ${messageArchive.size} ᴅᴇʟᴇᴛᴇᴅ\n│ ᴜsᴀɢᴇ: .antidelete on/off\n╰─────────◆────────╯`);
     },
 
     async onMessage(sock, m) {
-        if (!antideleteEnabled) return;
         if (!m || !m.key) return;
 
-        const type = m.type || Object.keys(m.message || {})[0] || '';
-
-        // Handle deleted messages (protocolMessage type 0 = delete)
-        if (type === 'protocolMessage') {
-            const proto = m.message?.protocolMessage;
+        // Handle deleted messages first (protocolMessage)
+        if (m.message?.protocolMessage) {
+            const proto = m.message.protocolMessage;
             
             // type 0 = DELETE for everyone
-            // type 1 = DELETE for me (usually not recoverable)
-            if (proto?.type === 0 && proto?.key) {
-                const cacheKey = proto.key.id;
-                const cached = msgCache.get(cacheKey);
+            if (proto?.type === 0 && proto?.key && antideleteEnabled) {
+                const msgId = proto.key.id;
+                const cached = msgCache.get(msgId) || messageArchive.get(msgId);
                 
                 if (!cached) {
-                    console.log(`[Anti-Delete] Message ${cacheKey} not found in cache (expired or not cached)`);
+                    console.log(`[Anti-Delete] Message ${msgId} not in cache`);
                     return;
                 }
 
-                const sender = proto.key.participant || proto.key.remoteJid || 'Unknown';
-                const senderNum = sender.split('@')[0];
-                const chat = m.key.remoteJid;
-
-                const header = `┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ ᪣ ꜰʀᴏᴍ: @${senderNum}\n│ ᪣ ᴅᴇʟᴇᴛᴇᴅ ᴍsɢ ʀᴇᴄᴏᴠᴇʀᴇᴅ\n│\n╰─────────◆────────╯`;
-
                 try {
+                    const sender = proto.key.participant || proto.key.remoteJid || 'Unknown';
+                    const senderNum = sender.split('@')[0];
+                    const chat = m.key.remoteJid;
+
+                    const header = `┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ ᪣ ꜰʀᴏᴍ: @${senderNum}\n│ ᪣ ᴅᴇʟᴇᴛᴇᴅ ᴍsɢ ʀᴇᴄᴏᴠᴇʀᴇᴅ\n│\n╰─────────◆────────╯`;
+
                     if (cached.type === 'text') {
                         await sock.sendMessage(chat, { 
                             text: `${header}\n\n${cached.body}`, 
                             mentions: [sender] 
                         });
-                        console.log(`[Anti-Delete] Recovered text message from ${senderNum}`);
+                        console.log(`[Anti-Delete] ✅ Recovered text message from ${senderNum}`);
                     } 
                     else if (cached.type === 'imageMessage' && cached.buffer) {
                         await sock.sendMessage(chat, { 
                             image: cached.buffer, 
                             caption: `${header}${cached.caption ? '\n\n' + cached.caption : ''}`, 
-                            mentions: [sender],
-                            viewOnce: cached.isViewOnce || false
+                            mentions: [sender]
                         });
-                        console.log(`[Anti-Delete] Recovered image from ${senderNum}`);
+                        console.log(`[Anti-Delete] ✅ Recovered image from ${senderNum}`);
                     } 
                     else if (cached.type === 'videoMessage' && cached.buffer) {
                         await sock.sendMessage(chat, { 
                             video: cached.buffer, 
                             caption: `${header}${cached.caption ? '\n\n' + cached.caption : ''}`, 
-                            mentions: [sender],
-                            viewOnce: cached.isViewOnce || false
+                            mentions: [sender]
                         });
-                        console.log(`[Anti-Delete] Recovered video from ${senderNum}`);
+                        console.log(`[Anti-Delete] ✅ Recovered video from ${senderNum}`);
                     } 
                     else if (cached.type === 'documentMessage' && cached.buffer) {
                         await sock.sendMessage(chat, { 
                             document: cached.buffer, 
-                            fileName: cached.fileName || 'file', 
+                            fileName: cached.fileName || 'document', 
                             mimetype: cached.mimetype || 'application/octet-stream', 
                             caption: `${header}${cached.caption ? '\n\n' + cached.caption : ''}`, 
                             mentions: [sender] 
                         });
-                        console.log(`[Anti-Delete] Recovered document from ${senderNum}`);
+                        console.log(`[Anti-Delete] ✅ Recovered document from ${senderNum}`);
                     } 
                     else if (cached.type === 'audioMessage' && cached.buffer) {
                         await sock.sendMessage(chat, { 
                             audio: cached.buffer, 
                             mimetype: cached.mimetype || 'audio/mp4', 
-                            ptt: cached.ptt || false 
+                            ptt: cached.ptt || false,
+                            caption: header
                         });
-                        console.log(`[Anti-Delete] Recovered audio from ${senderNum}`);
+                        console.log(`[Anti-Delete] ✅ Recovered audio from ${senderNum}`);
                     } 
-                    else {
-                        await sock.sendMessage(chat, { text: header, mentions: [sender] });
+                    else if (cached.type === 'stickerMessage' && cached.buffer) {
+                        await sock.sendMessage(chat, { 
+                            sticker: cached.buffer
+                        });
+                        console.log(`[Anti-Delete] ✅ Recovered sticker from ${senderNum}`);
                     }
+                    else {
+                        await sock.sendMessage(chat, { 
+                            text: `${header}\n\n[Deleted message type: ${cached.type}]`,
+                            mentions: [sender] 
+                        });
+                    }
+
+                    // Archive the recovered message
+                    messageArchive.set(msgId, cached);
+                    msgCache.delete(msgId);
                 } catch (err) {
-                    console.error('[Anti-Delete] Send error:', err);
+                    console.error('[Anti-Delete] Recovery error:', err.message);
                 }
-                
-                // Remove from cache after recovery to save memory
-                msgCache.delete(cacheKey);
             }
             return;
         }
 
-        // Don't cache protocol messages
-        if (type === 'protocolMessage') return;
+        // Cache messages if anti-delete is enabled
+        if (!antideleteEnabled) return;
         if (!m.key?.id) return;
 
         try {
-            // Unwrap viewOnce messages for caching
             const unwrapViewOnce = (msg) => {
                 if (!msg) return null;
                 if (msg.viewOnceMessageV2?.message) return msg.viewOnceMessageV2.message;
@@ -147,7 +153,7 @@ module.exports = {
             const unwrapped = unwrapViewOnce(m.message);
             const isViewOnce = !!unwrapped;
             const actualMsg = unwrapped || m.message;
-            const actualType = Object.keys(actualMsg || {})[0] || type;
+            const actualType = Object.keys(actualMsg || {})[0];
 
             // Cache text messages
             if (actualType === 'conversation' || actualType === 'extendedTextMessage') {
@@ -156,108 +162,152 @@ module.exports = {
                     msgCache.set(m.key.id, { 
                         type: 'text', 
                         body: text,
-                        timestamp: Date.now()
+                        timestamp: Date.now(),
+                        fromJid: m.key.remoteJid,
+                        senderJid: m.key.participant || m.key.remoteJid
                     });
-                    console.log(`[Anti-Delete] Cached text message: ${m.key.id}`);
+                    console.log(`[Anti-Delete] Cached text: ${m.key.id}`);
                 }
             } 
             // Cache image messages
             else if (actualType === 'imageMessage') {
-                const buffer = await downloadMediaMessage(
-                    m,
-                    'buffer',
-                    {},
-                    { reuploadRequest: sock.updateMediaMessage }
-                );
-                if (buffer) {
-                    msgCache.set(m.key.id, {
-                        type: 'imageMessage',
-                        buffer: buffer,
-                        caption: actualMsg?.imageMessage?.caption || '',
-                        isViewOnce: isViewOnce,
-                        timestamp: Date.now()
-                    });
-                    console.log(`[Anti-Delete] Cached image: ${m.key.id}`);
+                try {
+                    const buffer = await downloadMediaMessage(
+                        m,
+                        'buffer',
+                        {},
+                        { reuploadRequest: sock.updateMediaMessage }
+                    );
+                    if (buffer) {
+                        msgCache.set(m.key.id, {
+                            type: 'imageMessage',
+                            buffer: buffer,
+                            caption: actualMsg?.imageMessage?.caption || '',
+                            isViewOnce: isViewOnce,
+                            timestamp: Date.now(),
+                            fromJid: m.key.remoteJid,
+                            senderJid: m.key.participant || m.key.remoteJid
+                        });
+                        console.log(`[Anti-Delete] Cached image: ${m.key.id}`);
+                    }
+                } catch (err) {
+                    console.error('[Anti-Delete] Failed to cache image:', err.message);
                 }
             } 
             // Cache video messages
             else if (actualType === 'videoMessage') {
-                const buffer = await downloadMediaMessage(
-                    m,
-                    'buffer',
-                    {},
-                    { reuploadRequest: sock.updateMediaMessage }
-                );
-                if (buffer) {
-                    msgCache.set(m.key.id, {
-                        type: 'videoMessage',
-                        buffer: buffer,
-                        caption: actualMsg?.videoMessage?.caption || '',
-                        mimetype: actualMsg?.videoMessage?.mimetype || 'video/mp4',
-                        isViewOnce: isViewOnce,
-                        timestamp: Date.now()
-                    });
-                    console.log(`[Anti-Delete] Cached video: ${m.key.id}`);
+                try {
+                    const buffer = await downloadMediaMessage(
+                        m,
+                        'buffer',
+                        {},
+                        { reuploadRequest: sock.updateMediaMessage }
+                    );
+                    if (buffer) {
+                        msgCache.set(m.key.id, {
+                            type: 'videoMessage',
+                            buffer: buffer,
+                            caption: actualMsg?.videoMessage?.caption || '',
+                            mimetype: actualMsg?.videoMessage?.mimetype || 'video/mp4',
+                            isViewOnce: isViewOnce,
+                            timestamp: Date.now(),
+                            fromJid: m.key.remoteJid,
+                            senderJid: m.key.participant || m.key.remoteJid
+                        });
+                        console.log(`[Anti-Delete] Cached video: ${m.key.id}`);
+                    }
+                } catch (err) {
+                    console.error('[Anti-Delete] Failed to cache video:', err.message);
                 }
             } 
             // Cache document messages
             else if (actualType === 'documentMessage') {
-                const buffer = await downloadMediaMessage(
-                    m,
-                    'buffer',
-                    {},
-                    { reuploadRequest: sock.updateMediaMessage }
-                );
-                if (buffer) {
-                    msgCache.set(m.key.id, {
-                        type: 'documentMessage',
-                        buffer: buffer,
-                        caption: actualMsg?.documentMessage?.caption || '',
-                        fileName: actualMsg?.documentMessage?.fileName || 'document',
-                        mimetype: actualMsg?.documentMessage?.mimetype || 'application/octet-stream',
-                        timestamp: Date.now()
-                    });
-                    console.log(`[Anti-Delete] Cached document: ${m.key.id}`);
+                try {
+                    const buffer = await downloadMediaMessage(
+                        m,
+                        'buffer',
+                        {},
+                        { reuploadRequest: sock.updateMediaMessage }
+                    );
+                    if (buffer) {
+                        msgCache.set(m.key.id, {
+                            type: 'documentMessage',
+                            buffer: buffer,
+                            caption: actualMsg?.documentMessage?.caption || '',
+                            fileName: actualMsg?.documentMessage?.fileName || 'document',
+                            mimetype: actualMsg?.documentMessage?.mimetype || 'application/octet-stream',
+                            timestamp: Date.now(),
+                            fromJid: m.key.remoteJid,
+                            senderJid: m.key.participant || m.key.remoteJid
+                        });
+                        console.log(`[Anti-Delete] Cached document: ${m.key.id}`);
+                    }
+                } catch (err) {
+                    console.error('[Anti-Delete] Failed to cache document:', err.message);
                 }
             } 
             // Cache audio messages
             else if (actualType === 'audioMessage') {
-                const buffer = await downloadMediaMessage(
-                    m,
-                    'buffer',
-                    {},
-                    { reuploadRequest: sock.updateMediaMessage }
-                );
-                if (buffer) {
-                    msgCache.set(m.key.id, {
-                        type: 'audioMessage',
-                        buffer: buffer,
-                        mimetype: actualMsg?.audioMessage?.mimetype || 'audio/mp4',
-                        ptt: actualMsg?.audioMessage?.ptt || false,
-                        timestamp: Date.now()
-                    });
-                    console.log(`[Anti-Delete] Cached audio: ${m.key.id}`);
+                try {
+                    const buffer = await downloadMediaMessage(
+                        m,
+                        'buffer',
+                        {},
+                        { reuploadRequest: sock.updateMediaMessage }
+                    );
+                    if (buffer) {
+                        msgCache.set(m.key.id, {
+                            type: 'audioMessage',
+                            buffer: buffer,
+                            mimetype: actualMsg?.audioMessage?.mimetype || 'audio/mp4',
+                            ptt: actualMsg?.audioMessage?.ptt || false,
+                            timestamp: Date.now(),
+                            fromJid: m.key.remoteJid,
+                            senderJid: m.key.participant || m.key.remoteJid
+                        });
+                        console.log(`[Anti-Delete] Cached audio: ${m.key.id}`);
+                    }
+                } catch (err) {
+                    console.error('[Anti-Delete] Failed to cache audio:', err.message);
+                }
+            }
+            // Cache sticker messages
+            else if (actualType === 'stickerMessage') {
+                try {
+                    const buffer = await downloadMediaMessage(
+                        m,
+                        'buffer',
+                        {},
+                        { reuploadRequest: sock.updateMediaMessage }
+                    );
+                    if (buffer) {
+                        msgCache.set(m.key.id, {
+                            type: 'stickerMessage',
+                            buffer: buffer,
+                            timestamp: Date.now(),
+                            fromJid: m.key.remoteJid,
+                            senderJid: m.key.participant || m.key.remoteJid
+                        });
+                        console.log(`[Anti-Delete] Cached sticker: ${m.key.id}`);
+                    }
+                } catch (err) {
+                    console.error('[Anti-Delete] Failed to cache sticker:', err.message);
                 }
             }
 
+            // Enforce cache size limit with FIFO
             if (msgCache.size > MAX_CACHE) {
-                let oldestKey = null;
-                let oldestTime = Date.now();
-                
+                const entriesToDelete = msgCache.size - MAX_CACHE + 100;
+                let deleted = 0;
                 for (const [key, value] of msgCache.entries()) {
-                    if (value.timestamp < oldestTime) {
-                        oldestTime = value.timestamp;
-                        oldestKey = key;
-                    }
+                    if (deleted >= entriesToDelete) break;
+                    msgCache.delete(key);
+                    deleted++;
                 }
-                
-                if (oldestKey) {
-                    msgCache.delete(oldestKey);
-                    console.log(`[Anti-Delete] Removed oldest message from cache (size: ${msgCache.size}/${MAX_CACHE})`);
-                }
+                console.log(`[Anti-Delete] Cache pruned: Removed ${deleted} old messages`);
             }
         } catch (err) {
-            console.error('[Anti-Delete] Cache error:', err);
+            console.error('[Anti-Delete] Cache error:', err.message);
         }
     }
 };
