@@ -34,17 +34,14 @@ module.exports = {
         const msgObj = raw.message || {};
         const type = m.type || Object.keys(msgObj)[0] || '';
 
-        // ── DETECT DELETE-FOR-EVERYONE ──────────────────────────────────────
         if (type === 'protocolMessage') {
             const proto = msgObj?.protocolMessage;
-            // type 0 = REVOKE (delete for everyone)
             if (proto?.type === 0 && proto?.key) {
                 const deletedId = proto.key.id;
                 const cached = msgCache.get(deletedId);
                 if (!cached) return;
 
-                // Who deleted? In groups the participant is on the outer key;
-                // for DMs it's the remoteJid itself.
+            
                 const isGroup = m.from?.endsWith('@g.us');
                 const deleter = isGroup
                     ? (m.key?.participant || m.sender || 'Unknown')
@@ -105,7 +102,6 @@ module.exports = {
             return;
         }
 
-        // ── CACHE INCOMING MESSAGES ─────────────────────────────────────────
         if (!m.key?.id) return;
 
         try {
@@ -182,7 +178,6 @@ module.exports = {
                 });
             }
 
-            // Trim cache
             if (msgCache.size > MAX_CACHE) {
                 msgCache.delete(msgCache.keys().next().value);
             }
