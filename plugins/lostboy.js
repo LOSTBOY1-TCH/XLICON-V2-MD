@@ -17,27 +17,31 @@ module.exports = {
 
         try {
             const qMsg = m.quoted.message;
-            const qType = m.quoted.type;
-
-            // Unwrap viewonce messages to get the raw content
+            
+            // Unwrap viewonce messages
             const unwrapViewOnce = (msg) => {
-                return msg?.viewOnceMessage?.message ||
-                    msg?.viewOnceMessageV2?.message ||
-                    msg?.viewOnceMessageV2Extension?.message ||
-                    null;
+                if (!msg) return null;
+                if (msg.viewOnceMessageV2?.message) return msg.viewOnceMessageV2.message;
+                if (msg.viewOnceMessageV2Extension?.message) return msg.viewOnceMessageV2Extension.message;
+                if (msg.viewOnceMessage?.message) return msg.viewOnceMessage.message;
+                return null;
             };
 
             const unwrapped = unwrapViewOnce(qMsg);
             const actualMsg = unwrapped || qMsg;
-            const actualType = Object.keys(actualMsg || {})[0] || qType;
+            const actualType = Object.keys(actualMsg || {})[0];
+
+            // Use the original quoted message for download
+            const msgToDownload = m.quoted;
 
             if (actualType === 'imageMessage' || actualType === 'videoMessage') {
                 const buffer = await downloadMediaMessage(
-                    unwrapped 
-                        ? { key: m.quoted.key, message: actualMsg }
-                        : (m.quoted.raw || m.quoted),
-                    'buffer', {}, sock
+                    msgToDownload,
+                    'buffer',
+                    {},
+                    { reuploadRequest: sock.updateMediaMessage }
                 );
+                
                 if (actualType === 'imageMessage') {
                     await sock.sendMessage(dmJid, {
                         image: buffer,
@@ -53,10 +57,10 @@ module.exports = {
                 }
             } else if (actualType === 'audioMessage') {
                 const buffer = await downloadMediaMessage(
-                    unwrapped 
-                        ? { key: m.quoted.key, message: actualMsg }
-                        : (m.quoted.raw || m.quoted),
-                    'buffer', {}, sock
+                    msgToDownload,
+                    'buffer',
+                    {},
+                    { reuploadRequest: sock.updateMediaMessage }
                 );
                 await sock.sendMessage(dmJid, {
                     audio: buffer,
