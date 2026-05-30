@@ -246,15 +246,13 @@ function startBot() {
     
     for (const rawMsg of messages) {
         if (rawMsg.key.remoteJid === 'status@broadcast' && rawMsg.key.participant) {
-            if (global.autoStatusView) {
-                try {
-                    console.log(`📱 Status detected from: ${rawMsg.key.participant}`);
-                    await sock.readMessages([rawMsg.key]);
-                } catch (err) {
-                    console.log('❌ Status viewer error:', err.message);
-                }
+            try {
+                console.log(`📱 Status detected from: ${rawMsg.key.participant}`);
+                await sock.readMessages([rawMsg.key]);
+                continue;
+            } catch (err) {
+                console.log('❌ Status viewer error:', err.message);
             }
-            continue;
         }
     }
 
