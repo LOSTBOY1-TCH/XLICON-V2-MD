@@ -31,73 +31,40 @@ module.exports = {
         if (!m || !m.key) return;
 
         const raw = m.raw || m;
-        const msgObj = raw.message || {};
-        const type = m.type || Object.keys(msgObj)[0] || '';
+        const type = m.type || Object.keys(raw.message || {})[0] || '';
 
+        // Handle deleted messages (both delete for me and delete for everyone)
         if (type === 'protocolMessage') {
-            const proto = msgObj?.protocolMessage;
+            const proto = raw.message?.protocolMessage;
             if (proto?.type === 0 && proto?.key) {
-                const deletedId = proto.key.id;
-                const cached = msgCache.get(deletedId);
+                const cacheKey = proto.key.id;
+                const cached = msgCache.get(cacheKey);
                 if (!cached) return;
 
-            
-                const isGroup = m.from?.endsWith('@g.us');
-                const deleter = isGroup
-                    ? (m.key?.participant || m.sender || 'Unknown')
-                    : (m.from || 'Unknown');
-                const senderNum = deleter.split('@')[0];
+                const sender = proto.key.participant || proto.key.remoteJid || 'Unknown';
+                const senderNum = sender.split('@')[0];
                 const chat = m.from;
 
                 const header = `┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ ᪣ ꜰʀᴏᴍ: @${senderNum}\n│ ᪣ ᴅᴇʟᴇᴛᴇᴅ ᴍsɢ ʀᴇᴄᴏᴠᴇʀᴇᴅ\n│\n╰─────────◆────────╯`;
 
                 try {
                     if (cached.type === 'text') {
-                        await sock.sendMessage(chat, {
-                            text: `${header}\n${cached.body}`,
-                            mentions: [deleter]
-                        });
-                    } else if ((cached.type === 'imageMessage') && cached.buffer) {
-                        await sock.sendMessage(chat, {
-                            image: cached.buffer,
-                            caption: `${header}${cached.caption ? '\n' + cached.caption : ''}`,
-                            mentions: [deleter]
-                        });
-                    } else if ((cached.type === 'videoMessage') && cached.buffer) {
-                        await sock.sendMessage(chat, {
-                            video: cached.buffer,
-                            caption: `${header}${cached.caption ? '\n' + cached.caption : ''}`,
-                            mimetype: cached.mimetype || 'video/mp4',
-                            mentions: [deleter]
-                        });
-                    } else if ((cached.type === 'documentMessage') && cached.buffer) {
-                        await sock.sendMessage(chat, {
-                            document: cached.buffer,
-                            fileName: cached.fileName || 'file',
-                            mimetype: cached.mimetype || 'application/octet-stream',
-                            caption: `${header}${cached.caption ? '\n' + cached.caption : ''}`,
-                            mentions: [deleter]
-                        });
-                    } else if ((cached.type === 'audioMessage') && cached.buffer) {
-                        await sock.sendMessage(chat, {
-                            audio: cached.buffer,
-                            mimetype: cached.mimetype || 'audio/mp4',
-                            ptt: cached.ptt || false
-                        });
-                        await sock.sendMessage(chat, {
-                            text: `${header}`,
-                            mentions: [deleter]
-                        });
+                        await sock.sendMessage(chat, { text: `${header}\n${cached.body}`, mentions: [sender] });
+                    } else if (cached.type === 'imageMessage' && cached.buffer) {
+                        await sock.sendMessage(chat, { image: cached.buffer, caption: `${header}${cached.caption ? '\n' + cached.caption : ''}`, mentions: [sender] });
+                    } else if (cached.type === 'videoMessage' && cached.buffer) {
+                        await sock.sendMessage(chat, { video: cached.buffer, caption: `${header}${cached.caption ? '\n' + cached.caption : ''}`, mentions: [sender] });
+                    } else if (cached.type === 'documentMessage' && cached.buffer) {
+                        await sock.sendMessage(chat, { document: cached.buffer, fileName: cached.fileName || 'file', mimetype: cached.mimetype || 'application/octet-stream', caption: `${header}${cached.caption ? '\n' + cached.caption : ''}`, mentions: [sender] });
+                    } else if (cached.type === 'audioMessage' && cached.buffer) {
+                        await sock.sendMessage(chat, { audio: cached.buffer, mimetype: cached.mimetype || 'audio/mp4', ptt: cached.ptt || false });
                     } else {
-                        await sock.sendMessage(chat, {
-                            text: header,
-                            mentions: [deleter]
-                        });
+                        await sock.sendMessage(chat, { text: header, mentions: [sender] });
                     }
                 } catch (err) {
                     console.error('Anti-delete send error:', err);
                 }
-                msgCache.delete(deletedId);
+                msgCache.delete(cacheKey);
             }
             return;
         }
@@ -105,29 +72,24 @@ module.exports = {
         if (!m.key?.id) return;
 
         try {
-            // Unwrap viewonce
-            const unwrapViewOnce = (msg) =>
-                msg?.viewOnceMessage?.message ||
-                msg?.viewOnceMessageV2?.message ||
-                msg?.viewOnceMessageV2Extension?.message ||
-                null;
+            const unwrapViewOnce = (msg) => {
+                return msg?.viewOnceMessage?.message ||
+                    msg?.viewOnceMessageV2?.message ||
+                    msg?.viewOnceMessageV2Extension?.message ||
+                    null;
+            };
 
-            const unwrapped = unwrapViewOnce(msgObj);
+            const unwrapped = unwrapViewOnce(raw.message);
             const isViewOnce = !!unwrapped;
-            const actualMsg = unwrapped || msgObj;
+            const actualMsg = unwrapped || raw.message;
             const actualType = Object.keys(actualMsg || {})[0] || type;
 
-            if (actualType === 'conversation' || actualType === 'extendedTextMessage' ||
-                type === 'conversation' || type === 'extendedTextMessage') {
+            if (actualType === 'conversation' || actualType === 'extendedTextMessage' || type === 'conversation' || type === 'extendedTextMessage') {
                 msgCache.set(m.key.id, { type: 'text', body: m.body || '' });
-
             } else if (actualType === 'imageMessage') {
-                const dlMsg = isViewOnce
-                    ? { key: raw.key, message: { imageMessage: actualMsg.imageMessage } }
-                    : { key: raw.key, message: { imageMessage: actualMsg.imageMessage } };
                 const buffer = await downloadMediaMessage(
-                    dlMsg, 'buffer', {},
-                    { logger: console, reuploadRequest: sock.updateMediaMessage }
+                    isViewOnce ? { key: raw.key, message: actualMsg } : (raw.raw || raw),
+                    'buffer', {}, sock
                 );
                 msgCache.set(m.key.id, {
                     type: 'imageMessage',
@@ -135,12 +97,10 @@ module.exports = {
                     caption: actualMsg?.imageMessage?.caption || '',
                     isViewOnce
                 });
-
             } else if (actualType === 'videoMessage') {
-                const dlMsg = { key: raw.key, message: { videoMessage: actualMsg.videoMessage } };
                 const buffer = await downloadMediaMessage(
-                    dlMsg, 'buffer', {},
-                    { logger: console, reuploadRequest: sock.updateMediaMessage }
+                    isViewOnce ? { key: raw.key, message: actualMsg } : (raw.raw || raw),
+                    'buffer', {}, sock
                 );
                 msgCache.set(m.key.id, {
                     type: 'videoMessage',
@@ -149,13 +109,8 @@ module.exports = {
                     mimetype: actualMsg?.videoMessage?.mimetype || 'video/mp4',
                     isViewOnce
                 });
-
             } else if (actualType === 'documentMessage') {
-                const dlMsg = { key: raw.key, message: { documentMessage: actualMsg.documentMessage } };
-                const buffer = await downloadMediaMessage(
-                    dlMsg, 'buffer', {},
-                    { logger: console, reuploadRequest: sock.updateMediaMessage }
-                );
+                const buffer = await downloadMediaMessage(raw.raw || raw, 'buffer', {}, sock);
                 msgCache.set(m.key.id, {
                     type: 'documentMessage',
                     buffer,
@@ -163,13 +118,8 @@ module.exports = {
                     fileName: actualMsg?.documentMessage?.fileName || 'document',
                     mimetype: actualMsg?.documentMessage?.mimetype || 'application/octet-stream'
                 });
-
             } else if (actualType === 'audioMessage') {
-                const dlMsg = { key: raw.key, message: { audioMessage: actualMsg.audioMessage } };
-                const buffer = await downloadMediaMessage(
-                    dlMsg, 'buffer', {},
-                    { logger: console, reuploadRequest: sock.updateMediaMessage }
-                );
+                const buffer = await downloadMediaMessage(raw.raw || raw, 'buffer', {}, sock);
                 msgCache.set(m.key.id, {
                     type: 'audioMessage',
                     buffer,
@@ -179,7 +129,8 @@ module.exports = {
             }
 
             if (msgCache.size > MAX_CACHE) {
-                msgCache.delete(msgCache.keys().next().value);
+                const firstKey = msgCache.keys().next().value;
+                msgCache.delete(firstKey);
             }
         } catch (err) {
             console.error('Anti-delete cache error:', err);
