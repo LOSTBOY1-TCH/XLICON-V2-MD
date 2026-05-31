@@ -23,7 +23,14 @@ module.exports = {
 
     async onMessage(sock, m) {
         // Only auto-view if enabled
-        if (!global.autoStatusView) return;
+        if (!global.autoStatusView) {
+            console.log(`[PLUGIN] autostatusview - Disabled, skipping`);
+            return;
+        }
+        
+        console.log(`[PLUGIN] autostatusview - Checking message`);
+        console.log(`[MESSAGE TYPE] ${m.type || 'unknown'}`);
+        console.log(`[CHAT] ${m.key?.remoteJid || m.from}`);
         
         // Check if message is from status broadcast
         if (m.key?.remoteJid === 'status@broadcast' && m.key?.participant) {
