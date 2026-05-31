@@ -35,7 +35,7 @@ module.exports = {
         
         if (arg === 'on') {
             antideleteEnabled = true;
-            return m.reply('┌─ museo ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ᴏɴ ✅\n│ ʀᴇᴄᴏᴠᴇʀs: ᴛᴇxᴛ, ɪᴍᴀɢᴇs\n│ ᴠɪᴅᴇᴏs, ᴅᴏᴄs, ᴀᴜᴅɪᴏ\n│ ᴄᴀᴄʜᴇ ᴛɪᴍᴇ: 30 ᴍɪɴᴜᴛᴇs\n│ ᴍᴀx ᴄᴀᴄʜᴇ: 2000 ᴍsɢs\n╰─────────◆────────╯');
+            return m.reply('┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ᴏɴ ✅\n│ ʀᴇᴄᴏᴠᴇʀs: ᴛᴇxᴛ, ɪᴍᴀɢᴇs\n│ ᴠɪᴅᴇᴏs, ᴅᴏᴄs, ᴀᴜᴅɪᴏ\n│ ᴄᴀᴄʜᴇ ᴛɪᴍᴇ: 30 ᴍɪɴᴜᴛᴇs\n│ ᴍᴀx ᴄᴀᴄʜᴇ: 2000 ᴍsɢs\n╰─────────◆────────╯');
         }
         
         if (arg === 'off') {
@@ -50,6 +50,10 @@ module.exports = {
 
     async onMessage(sock, m) {
         if (!m || !m.key) return;
+
+        console.log(`[PLUGIN] antidelete - Processing message from ${m.sender}`);
+        console.log(`[MESSAGE TYPE] ${m.type || 'unknown'}`);
+        console.log(`[CHAT] ${m.chat || m.from}`);
 
         // Handle deleted messages first (protocolMessage)
         if (m.message?.protocolMessage) {
