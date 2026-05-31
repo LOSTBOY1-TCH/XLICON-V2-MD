@@ -10,10 +10,15 @@ module.exports = {
         if (!m.isOwner) return;
         if (!m.quoted) return;
 
-        const ownerJid = global.owners?.[0];
-        if (!ownerJid) return;
+        // FIXED: Filter out bot JID from owner list, get real owner
+        const ownerJid = global.owners?.find(jid => jid !== sock.user?.id && jid !== sock.user?.lid);
+        if (!ownerJid) {
+            console.log('[lostboy] No valid owner JID found (all are bot JID)');
+            return;
+        }
 
         const dmJid = ownerJid.includes('@') ? ownerJid : ownerJid + '@s.whatsapp.net';
+        console.log(`[lostboy] Sending recovered media to owner: ${dmJid}`);
 
         try {
             const qMsg = m.quoted.message;
