@@ -1,10 +1,10 @@
-const { downloadMediaMessage, extractMessageContent } = require('@whiskeysockets/baileys');
+const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 let antideleteEnabled = false;
 const msgCache = new Map();
-const MAX_CACHE = 2000; // Increased cache size for better recovery
-const MAX_AGE = 30 * 60 * 1000; // 30 minutes cache lifetime
-const messageArchive = new Map(); // Archive for deleted messages
+const MAX_CACHE = 2000;
+const MAX_AGE = 30 * 60 * 1000; // 30 minutes
+const messageArchive = new Map();
 
 // Auto-clean old messages every 2 minutes
 setInterval(() => {
@@ -19,7 +19,7 @@ setInterval(() => {
     if (cleaned > 0) {
         console.log(`[Anti-Delete] Cleaned ${cleaned} expired messages. Cache size: ${msgCache.size}`);
     }
-}, 120000); // Clean every 2 minutes
+}, 120000);
 
 module.exports = {
     name: 'antidelete',
@@ -29,33 +29,30 @@ module.exports = {
     command: /^\.?(antidelete|antidel|ad)$/i,
 
     async execute(sock, m, args) {
-        if (!m.isOwner) return m.reply('❌ ᴏᴡɴᴇʀ ᴏɴʟʏ.');
+        if (!m.isOwner) return m.reply('❌ Owner only.');
         
         const arg = args[0]?.toLowerCase();
         
         if (arg === 'on') {
             antideleteEnabled = true;
-            return m.reply('┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ᴏɴ ✅\n│ ʀᴇᴄᴏᴠᴇʀs: ᴛᴇxᴛ, ɪᴍᴀɢᴇs\n│ ᴠɪᴅᴇᴏs, ᴅᴏᴄs, ᴀᴜᴅɪᴏ\n│ ᴄᴀᴄʜᴇ ᴛɪᴍᴇ: 30 ᴍɪɴᴜᴛᴇs\n│ ᴍᴀx ᴄᴀᴄʜᴇ: 2000 ᴍsɢs\n╰─────────◆────────╯');
+            return m.reply('┌─▰ ANTI DELETE\n│\n│ STATUS: ON ✅\n│ RECOVERS: TEXT, IMAGES\n│ VIDEOS, DOCS, AUDIO\n│ CACHE TIME: 30 MINUTES\n│ MAX CACHE: 2000 MSGS\n╰─────────◆────────╯');
         }
         
         if (arg === 'off') {
             antideleteEnabled = false;
             msgCache.clear();
             messageArchive.clear();
-            return m.reply('┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ᴏꜰꜰ ❌\n│ ᴄᴀᴄʜᴇ ᴄʟᴇᴀʀᴇᴅ ✅\n╰─────────◆────────╯');
+            return m.reply('┌─▰ ANTI DELETE\n│\n│ STATUS: OFF ❌\n│ CACHE CLEARED ✅\n╰─────────◆────────╯');
         }
         
-        return m.reply(`┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ sᴛᴀᴛᴜs: ${antideleteEnabled ? 'ᴏɴ ✅' : 'ᴏꜰꜰ ❌'}\n│ ᴄᴀᴄʜᴇᴅ: ${msgCache.size}/2000 ᴍsɢs\n│ ᴀʀᴄʜɪᴠᴇ: ${messageArchive.size} ᴅᴇʟᴇᴛᴇᴅ\n│ ᴜsᴀɢᴇ: .antidelete on/off\n╰─────────◆────────╯`);
+        return m.reply(`┌─▰ ANTI DELETE\n│\n│ STATUS: ${antideleteEnabled ? 'ON ✅' : 'OFF ❌'}\n│ CACHED: ${msgCache.size}/2000 MSGS\n│ ARCHIVE: ${messageArchive.size} DELETED\n│ USAGE: .antidelete on/off\n╰─────────◆────────╯`);
     },
 
     async onMessage(sock, m) {
         if (!m || !m.key) return;
 
-        console.log(`[PLUGIN] antidelete - Processing message from ${m.sender}`);
-        console.log(`[MESSAGE TYPE] ${m.type || 'unknown'}`);
-        console.log(`[CHAT] ${m.chat || m.from}`);
-
-        // Handle deleted messages first (protocolMessage)
+        // Handle deleted messages (protocolMessage)
+        // Check if m.message exists and has protocolMessage
         if (m.message?.protocolMessage) {
             const proto = m.message.protocolMessage;
             
@@ -74,7 +71,7 @@ module.exports = {
                     const senderNum = sender.split('@')[0];
                     const chat = m.key.remoteJid;
 
-                    const header = `┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ ᪣ ꜰʀᴏᴍ: @${senderNum}\n│ ᪣ ᴅᴇʟᴇᴛᴇᴅ ᴍsɢ ʀᴇᴄᴏᴠᴇʀᴇᴅ\n│\n╰─────────◆────────╯`;
+                    const header = `┌─▰ ANTI DELETE\n│\n│ 📬 FROM: @${senderNum}\n│ 🗑️ DELETED MSG RECOVERED\n│\n╰─────────◆────────╯`;
 
                     if (cached.type === 'text') {
                         await sock.sendMessage(chat, { 
@@ -113,8 +110,7 @@ module.exports = {
                         await sock.sendMessage(chat, { 
                             audio: cached.buffer, 
                             mimetype: cached.mimetype || 'audio/mp4', 
-                            ptt: cached.ptt || false,
-                            caption: header
+                            ptt: cached.ptt || false
                         });
                         console.log(`[Anti-Delete] ✅ Recovered audio from ${senderNum}`);
                     } 
@@ -131,7 +127,6 @@ module.exports = {
                         });
                     }
 
-                    // Archive the recovered message
                     messageArchive.set(msgId, cached);
                     msgCache.delete(msgId);
                 } catch (err) {
@@ -299,7 +294,7 @@ module.exports = {
                 }
             }
 
-            // Enforce cache size limit with FIFO
+            // Enforce cache size limit
             if (msgCache.size > MAX_CACHE) {
                 const entriesToDelete = msgCache.size - MAX_CACHE + 100;
                 let deleted = 0;
