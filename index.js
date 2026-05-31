@@ -246,13 +246,9 @@ function startBot() {
     
     for (const rawMsg of messages) {
         if (rawMsg.key.remoteJid === 'status@broadcast' && rawMsg.key.participant) {
-            try {
-                console.log(`📱 Status detected from: ${rawMsg.key.participant}`);
-                await sock.readMessages([rawMsg.key]);
-                continue;
-            } catch (err) {
-                console.log('❌ Status viewer error:', err.message);
-            }
+            // FIXED: Respect autoStatusView setting - don't auto-view here, let plugin handle it
+            // Status viewing is now controlled by autostatusview plugin
+            continue;
         }
     }
 
