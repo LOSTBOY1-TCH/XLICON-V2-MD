@@ -161,7 +161,7 @@ async function serializeMessage(sock, msg) {
     }
 
     return {
-        key: msg.key,  // Add this line
+        key: msg.key,
         id: msg.key?.id,
         from,
         sender,
@@ -184,6 +184,9 @@ async function serializeMessage(sock, msg) {
         isGroupOwner,
         isButtonResponse: !!msg.message?.interactiveResponseMessage,
         buttonId: msg.message?.interactiveResponseMessage?.buttonId || null,
+        // EXPOSED FOR PLUGINS: Original Baileys message object
+        message: msg.message,
+        mentionedJid: msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [],
         reply: async (content, options = {}) => {
             if (typeof content === 'string') {
                 return await sock.sendMessage(from, { text: content, ...options }, { quoted: msg })
