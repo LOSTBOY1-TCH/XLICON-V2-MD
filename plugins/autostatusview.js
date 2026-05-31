@@ -8,31 +8,25 @@ module.exports = {
     command: /^\.?(autostatusview|statusview|asv)$/i,
 
     async execute(sock, m, args) {
-        if (!m.isOwner) return m.reply('❌ ᴏᴡɴᴇʀ ᴏɴʟʏ.');
+        if (!m.isOwner) return m.reply('❌ Owner only.');
         const arg = args[0]?.toLowerCase();
         if (arg === 'on') {
             global.autoStatusView = true;
-            return m.reply('┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs ᴠɪᴇᴡ\n│\n│ sᴛᴀᴛᴜs: ᴏɴ ✅\n│ ʙᴏᴛ ᴡɪʟʟ ᴀᴜᴛᴏ ᴠɪᴇᴡ\n│ ᴀʟʟ sᴛᴀᴛᴜs ᴜᴘᴅᴀᴛᴇs\n╰─────────◆────────╯');
+            return m.reply('┌─▰ AUTO STATUS VIEW\n│\n│ STATUS: ON ✅\n│ BOT WILL AUTO VIEW\n│ ALL STATUS UPDATES\n╰─────────◆────────╯');
         }
         if (arg === 'off') {
             global.autoStatusView = false;
-            return m.reply('┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs ᴠɪᴇᴡ\n│\n│ sᴛᴀᴛᴜs: ᴏꜰꜰ ❌\n╰─────────◆────────╯');
+            return m.reply('┌─▰ AUTO STATUS VIEW\n│\n│ STATUS: OFF ❌\n╰─────────◆────────╯');
         }
-        return m.reply(`┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs ᴠɪᴇᴡ\n│\n│ sᴛᴀᴛᴜs: ${global.autoStatusView ? 'ᴏɴ ✅' : 'ᴏꜰꜰ ❌'}\n│ ᴜsᴀɢᴇ: .asv on/off\n╰─────────◆────────╯`);
+        return m.reply(`┌─▰ AUTO STATUS VIEW\n│\n│ STATUS: ${global.autoStatusView ? 'ON ✅' : 'OFF ❌'}\n│ USAGE: .asv on/off\n╰─────────◆────────╯`);
     },
 
     async onMessage(sock, m) {
         // Only auto-view if enabled
-        if (!global.autoStatusView) {
-            console.log(`[PLUGIN] autostatusview - Disabled, skipping`);
-            return;
-        }
-        
-        console.log(`[PLUGIN] autostatusview - Checking message`);
-        console.log(`[MESSAGE TYPE] ${m.type || 'unknown'}`);
-        console.log(`[CHAT] ${m.key?.remoteJid || m.from}`);
+        if (!global.autoStatusView) return;
         
         // Check if message is from status broadcast
+        // m.key is available from the serialized message
         if (m.key?.remoteJid === 'status@broadcast' && m.key?.participant) {
             try {
                 console.log(`📱 Auto viewing status from: ${m.key.participant}`);
