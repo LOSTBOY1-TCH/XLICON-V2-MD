@@ -221,6 +221,8 @@ function startBot() {
 
             global.antiDeleteStore = global.antiDeleteStore || {};
             global.messageCache = global.messageCache || {};
+            global.autoStatusView = global.autoStatusView || false;
+            global.autoStatusLike = global.autoStatusLike || false;
 
             sock.ev.on('messages.upsert', async ({ messages, type }) => {
                 if (type !== 'notify' && type !== 'append') return;
@@ -249,6 +251,39 @@ function startBot() {
                 
                 for (const rawMsg of messages) {
                     if (rawMsg.key.remoteJid === 'status@broadcast' && rawMsg.key.participant) {
+                        if (global.autoStatusView || global.autoStatusLike) {
+                            try {
+                                const statusSender = rawMsg.key.participant;
+                                
+                                if (global.autoStatusView) {
+                                    try {
+                                        await sock.readMessages([rawMsg.key]);
+                                        console.log(`✅ Auto-viewed status from ${statusSender}`);
+                                    } catch (err) {
+                                        console.log(`⚠️ Failed to view status:`, err.message);
+                                    }
+                                }
+                                
+                                if (global.autoStatusLike) {
+                                    try {
+                                        const emojis = ['❤️', '🔥', '😍', '💯', '⚡', '✨', '🤍', '🫶', '😎', '🌟'];
+                                        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                                        
+                                        await sock.sendMessage(statusSender, { 
+                                            react: { 
+                                                text: randomEmoji, 
+                                                key: rawMsg.key 
+                                            } 
+                                        });
+                                        console.log(`✅ Auto-reacted to status from ${statusSender} with ${randomEmoji}`);
+                                    } catch (err) {
+                                        console.log(`⚠️ Failed to react to status:`, err.message);
+                                    }
+                                }
+                            } catch (err) {
+                                console.log(`⚠️ Status auto-action error:`, err.message);
+                            }
+                        }
                         continue;
                     }
                 }
