@@ -184,7 +184,6 @@ async function serializeMessage(sock, msg) {
         isGroupOwner,
         isButtonResponse: !!msg.message?.interactiveResponseMessage,
         buttonId: msg.message?.interactiveResponseMessage?.buttonId || null,
-        // EXPOSED FOR PLUGINS: Original Baileys message object
         message: msg.message,
         mentionedJid: msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [],
         reply: async (content, options = {}) => {
