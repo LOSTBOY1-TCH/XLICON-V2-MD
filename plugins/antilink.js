@@ -1,8 +1,3 @@
-/**
- * AntiLink Moderation System
- * Created By ABZTECH
- */
-
 const LINK_REGEX = /(?:https?:\/\/|www\.|chat\.whatsapp\.com\/|t\.me\/|discord\.gg\/|(?:youtube\.com|youtu\.be)\/|instagram\.com\/|(?:facebook\.com|fb\.com)\/|(?:x\.com|twitter\.com)\/)[^\s]*/i;
 
 function normalizeJid(jid = '') {
