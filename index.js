@@ -220,6 +220,7 @@ function startBot() {
             }
 
             global.antiDeleteStore = global.antiDeleteStore || {};
+            global.antiLinkStore = global.antiLinkStore || {};
             global.messageCache = global.messageCache || {};
             global.autoStatusView = global.autoStatusView || false;
             global.autoStatusLike = global.autoStatusLike || false;
