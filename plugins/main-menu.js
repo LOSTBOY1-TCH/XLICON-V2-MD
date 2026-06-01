@@ -50,6 +50,8 @@ async execute(sock, m) {
 │ ᪣ ${prefix}ᴄʀᴇᴀᴛᴏʀ
 │ ᪣ ${prefix}sᴇʟғ
 │ ᪣ ${prefix}ᴀᴜᴛᴏsᴛᴀᴛᴜsᴠɪᴇᴡ ᴏɴ/ᴏғғ
+│ ᪣ ${prefix}ᴀᴜᴛᴏsᴛᴀᴛᴜsʟɪᴋᴇ
+│ ᪣ ${prefix}ᴀᴜᴛᴏsᴛᴀᴛᴜsᴠɪᴇᴡʟɪᴋᴇ
 │ ᪣ ${prefix}ᴀɴᴛɪᴅᴇʟᴇᴛᴇ ᴏɴ/ᴏғғ
 │ ᪣ ${prefix}ᴜᴘᴅᴀᴛᴇ
 │ ᪣ ${prefix}sᴇᴛᴘʀᴇғɪx
@@ -68,6 +70,7 @@ async execute(sock, m) {
 │ ᪣ ${prefix}sᴛɪᴄᴋᴇʀ
 │ ᪣ ${prefix}ᴏᴄʀ
 │ ᪣ ${prefix}ᴛᴛs
+│ ᪣ ${prefix}ssᴡᴇʙ
 │ ᪣ ${prefix}ᴘᴏʟʟ
 │ ᪣ ${prefix}sʜᴀᴢᴀᴍ
 │ ᪣ ${prefix}ᴄᴏᴍᴘʀᴇss
