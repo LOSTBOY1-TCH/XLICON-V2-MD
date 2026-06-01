@@ -2,22 +2,21 @@ module.exports = {
     name: 'autostatuslike',
     aliases: ['asl'],
     description: 'Auto react to WhatsApp statuses',
+    tags: ['automation'],
 
     async execute(sock, m, args) {
         try {
-            if (!global.autoStatusConfig) {
-                global.autoStatusConfig = {
-                    enabled: false
-                };
+            if (!global.autoStatusLike) {
+                global.autoStatusLike = false;
             }
 
             const command = args[0]?.toLowerCase();
 
             if (!command || command === 'status') {
-                const status = global.autoStatusConfig.enabled ? 'ᴏɴ' : 'ᴏғғ';
-                const statusCard = `┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs
+                const status = global.autoStatusLike ? 'ᴏɴ' : 'ᴏғғ';
+                const statusCard = `┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs ʟɪᴋᴇ
 │
-│ ᪣ sᴛᴀᴛᴜs: ${status}
+│ ᪣ ʟɪᴋᴇ: ${status}
 │
 ╰─────────◆────────╯`;
 
@@ -25,11 +24,11 @@ module.exports = {
             }
 
             if (command === 'on') {
-                global.autoStatusConfig.enabled = true;
+                global.autoStatusLike = true;
 
-                const statusCard = `┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs
+                const statusCard = `┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs ʟɪᴋᴇ
 │
-│ ᪣ sᴛᴀᴛᴜs: ᴏɴ
+│ ᪣ ʟɪᴋᴇ: ᴏɴ
 │
 ╰─────────◆────────╯`;
 
@@ -37,29 +36,29 @@ module.exports = {
             }
 
             if (command === 'off') {
-                global.autoStatusConfig.enabled = false;
+                global.autoStatusLike = false;
 
-                const statusCard = `┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs
+                const statusCard = `┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs ʟɪᴋᴇ
 │
-│ ᪣ sᴛᴀᴛᴜs: ᴏғғ
+│ ᪣ ʟɪᴋᴇ: ᴏғғ
 │
 ╰─────────◆────────╯`;
 
                 return await m.reply(statusCard);
             }
 
-            const helpMsg = `┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs
+            const helpMsg = `┌─ム ᴀᴜᴛᴏ sᴛᴀᴛᴜs ʟɪᴋᴇ
 │
-│ ᪣ .autostatus on - Enable
-│ ᪣ .autostatus off - Disable
-│ ᪣ .autostatus - Show status
+│ ᪣ .autostatuslike on - Enable
+│ ᪣ .autostatuslike off - Disable
+│ ᪣ .autostatuslike - Show status
 │
 ╰─────────◆────────╯`;
 
             return await m.reply(helpMsg);
 
         } catch (err) {
-            console.error('AutoStatus error:', err);
+            console.error('❌ AutoStatusLike error:', err);
             await m.reply('❌ Error: ' + err.message);
         }
     }
