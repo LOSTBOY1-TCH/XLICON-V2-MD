@@ -1,51 +1,82 @@
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+
+const SETTINGS_FILE = path.join(__dirname, '../data/groupSettings.json');
+
+function ensureSettingsFile() {
+    const dataDir = path.dirname(SETTINGS_FILE);
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+    if (!fs.existsSync(SETTINGS_FILE)) {
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify({}));
+    }
+}
+
+function getGroupSettings(groupId) {
+    ensureSettingsFile();
+    try {
+        const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+        return data[groupId] || { welcome: false, goodbye: false };
+    } catch {
+        return { welcome: false, goodbye: false };
+    }
+}
+
+function setGroupSettings(groupId, settings) {
+    ensureSettingsFile();
+    try {
+        const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+        data[groupId] = { ...getGroupSettings(groupId), ...settings };
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
+    } catch (err) {
+        console.error('Error saving group settings:', err);
+    }
+}
+
 module.exports = {
     name: 'welcome',
-    aliases: ['welcome-toggle'],
-    description: 'Toggle group welcome/left messages on or off',
+    aliases: ['welcomemsg', 'welcometoggle'],
+    description: 'Toggle welcome messages on or off in the group',
     enabled: true,
 
     async execute(sock, m, args) {
-
         if (!m.isGroup) {
-            return m.reply('❌ This command only works in groups.')
+            return m.reply('❌ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴏɴʟʏ ᴡᴏʀᴋs ɪɴ ɢʀᴏᴜᴘs.');
         }
 
-        const metadata = await sock.groupMetadata(m.from)
-
+        const metadata = await sock.groupMetadata(m.from);
         const sender = metadata.participants.find(p =>
-            p.phoneNumber === m.sender || p.id === m.sender
-        )
+            p.id === m.sender || p.phoneNumber === m.sender.split('@')[0]
+        );
 
-        const isAdmin = sender?.admin === 'admin' || sender?.admin === 'superadmin'
+        const isAdmin = sender?.admin === 'admin' || sender?.admin === 'superadmin';
+        const isGroupOwner = sender?.id === metadata.owner || m.isGroupOwner;
 
-        if (!isAdmin) {
-            return m.reply('❌ Admins only.')
+        if (!isAdmin && !isGroupOwner && !m.isOwner) {
+            return m.reply('❌ ᴀᴅᴍɪɴs ᴏɴʟʏ.');
         }
 
-        if (!global.welcomeConfig) {
-            global.welcomeConfig = { enabled: true }
-        }
+        const currentSettings = getGroupSettings(m.from);
+        const currentStatus = currentSettings.welcome;
 
         if (!args[0]) {
             return m.reply(
-                `⚡ Welcome messages: ${global.welcomeConfig.enabled ? 'ON' : 'OFF'}\nUsage: ${global.BOT_PREFIX}welcome on|off`
-            )
+                `⚡ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇs: ${currentStatus ? '✅ ON' : '❌ OFF'}\n\nᴜsᴀɢᴇ: ${global.BOT_PREFIX}welcome on|off`
+            );
         }
 
-        const option = args[0].toLowerCase()
+        const option = args[0].toLowerCase();
 
         if (option === 'on') {
-            global.welcomeConfig.enabled = true
-            await m.reply('✅ Welcome/Goodbye messages ENABLED.')
-        } 
-        
-        else if (option === 'off') {
-            global.welcomeConfig.enabled = false
-            await m.reply('❌ Welcome/Goodbye messages DISABLED.')
-        } 
-        
-        else {
-            await m.reply('❌ Use `on` or `off`.')
+            setGroupSettings(m.from, { welcome: true });
+            await m.reply('✅ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇs ᴇɴᴀʙʟᴇᴅ.');
+        } else if (option === 'off') {
+            setGroupSettings(m.from, { welcome: false });
+            await m.reply('❌ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇs ᴅɪsᴀʙʟᴇᴅ.');
+        } else {
+            await m.reply('❌ ᴜsᴇ `on` ᴏʀ `ᴏғғ`.');
         }
     }
-}
+};
