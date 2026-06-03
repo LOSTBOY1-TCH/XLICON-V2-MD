@@ -626,7 +626,6 @@ function startBot() {
                 }
             }
 
-
             sock.ev.on('group-participants.update', async (update) => {
                 try {
                     const fs = require('fs');
@@ -715,7 +714,7 @@ function startBot() {
 │ ᪣ ɢʀᴏᴜᴘ: ${groupName}
 │ ᪣ ᴛᴏᴛᴀʟ ᴍᴇᴍʙᴇʀs: ${memberCount}
 │
-│ 👋 @${memberName} ɪ'ᴍ ᴠᴇʀʏ ɢʟᴀᴅ ᴛᴏ sᴇᴇ ʏᴏᴜ ʟᴇᴀᴠᴇ ☺️
+│ 👋 ᴛʜᴀɴᴋs ғᴏʀ ʙᴇɪɴɢ ᴛʜᴇʀᴇ!
 │
 ╰─────────◆─────────╯`.trim();
 
@@ -750,8 +749,6 @@ function startBot() {
                     console.error('❌ group-participants.update error:', err);
                 }
             });
-                }
-            })
 
             sock.ev.on('messages.reaction', async (reactions) => {
                 console.log('💖 Reaction update:', reactions);
