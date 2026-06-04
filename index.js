@@ -628,45 +628,113 @@ function startBot() {
 
             sock.ev.on('group-participants.update', async (update) => {
                 try {
-                    if (!global.welcomeConfig?.enabled) return
+                    const groupId = update.id;
+                    const action = update.action;
 
-                    const groupId = update.id
+                    const SETTINGS_FILE = path.join(__dirname, 'data/groupSettings.json');
+
+                    function readGroupSettings(gid) {
+                        try {
+                            if (!fs.existsSync(SETTINGS_FILE)) return { welcome: false, goodbye: false };
+                            const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+                            return data[gid] || { welcome: false, goodbye: false };
+                        } catch {
+                            return { welcome: false, goodbye: false };
+                        }
+                    }
+
+                    const settings = readGroupSettings(groupId);
+
+                    if (action !== 'add' && action !== 'remove') return;
+                    if (action === 'add' && !settings.welcome) return;
+                    if (action === 'remove' && !settings.goodbye) return;
+
+                    let groupMeta;
+                    try {
+                        groupMeta = await sock.groupMetadata(groupId);
+                    } catch {
+                        groupMeta = null;
+                    }
+
+                    const groupName = groupMeta?.subject || 'Group';
+                    const memberCount = groupMeta?.participants?.length ?? 0;
+
+                    const FALLBACK_IMAGE = 'https://i.ibb.co/6bqXHgj/fallback.jpg';
+
+                    let ppBuffer = null;
+                    try {
+                        const ppUrl = await sock.profilePictureUrl(groupId, 'image');
+                        const axios = require('axios');
+                        const resp = await axios.get(ppUrl, { responseType: 'arraybuffer', timeout: 8000 });
+                        ppBuffer = Buffer.from(resp.data);
+                    } catch {
+                        try {
+                            const axios = require('axios');
+                            const resp = await axios.get(FALLBACK_IMAGE, { responseType: 'arraybuffer', timeout: 8000 });
+                            ppBuffer = Buffer.from(resp.data);
+                        } catch {
+                            ppBuffer = null;
+                        }
+                    }
 
                     for (const participant of update.participants) {
-
                         const userId = typeof participant === 'string'
                             ? participant
-                            : participant.phoneNumber || participant.id
+                            : (participant.id || participant.phoneNumber || '');
 
-                        if (!userId) continue
+                        if (!userId) continue;
+                        if (action === 'add' && userId === sock.user.id) continue;
 
-                        const memberName = userId.split('@')[0]
+                        const userNumber = userId.split('@')[0];
 
-                        if (update.action === 'add') {
+                        let caption;
 
-                            if (userId === sock.user.id) continue
+                        if (action === 'add') {
+                            caption =
+                                `╭━━〔 👋 ᴡᴇʟᴄᴏᴍᴇ 〕━━⬣\n` +
+                                `┃\n` +
+                                `├─ム ᴜsᴇʀ : @${userNumber}\n` +
+                                `├─ム ɢʀᴏᴜᴘ : ${groupName}\n` +
+                                `├─ム ᴍᴇᴍʙᴇʀs : ${memberCount}\n` +
+                                `┃\n` +
+                                `├─ム ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴏᴜʀ ɢʀᴏᴜᴘ\n` +
+                                `├─ム ᴘʟᴇᴀsᴇ ʀᴇᴀᴅ ᴛʜᴇ ʀᴜʟᴇs\n` +
+                                `┃\n` +
+                                `╰━━━━━━━━━━⬣`;
+                        } else {
+                            caption =
+                                `╭━━〔 👋 ɢᴏᴏᴅʙʏᴇ 〕━━⬣\n` +
+                                `┃\n` +
+                                `├─ム ᴜsᴇʀ : @${userNumber}\n` +
+                                `├─ム ɢʀᴏᴜᴘ : ${groupName}\n` +
+                                `├─ム ᴍᴇᴍʙᴇʀs : ${memberCount}\n` +
+                                `┃\n` +
+                                `├─ム ɪ'ᴍ ᴠᴇʀʏ ɢʟᴀᴅ ᴛᴏ sᴇᴇ ʏᴏᴜ ʟᴇᴀᴠᴇ ☺️\n` +
+                                `├─ム ɢᴏᴏᴅ ʟᴜᴄᴋ ᴏɴ ʏᴏᴜʀ ᴊᴏᴜʀɴᴇʏ\n` +
+                                `┃\n` +
+                                `╰━━━━━━━━━━⬣`;
+                        }
 
-                            const text = `👋 Welcome @${memberName}!\n🎉 Glad to have you in this group!`
-
-                            await sock.sendMessage(groupId, {
-                                text,
-                                mentions: [userId]
-                            })
-
-                        } else if (update.action === 'remove') {
-
-                            const text = `ya @${memberName} has left the group.\nWe are not gonna miss you!`
-
-                            await sock.sendMessage(groupId, {
-                                text,
-                                mentions: [userId]
-                            })
-
+                        try {
+                            if (ppBuffer) {
+                                await sock.sendMessage(groupId, {
+                                    image: ppBuffer,
+                                    caption: caption,
+                                    mentions: [userId]
+                                });
+                            } else {
+                                await sock.sendMessage(groupId, {
+                                    text: caption,
+                                    mentions: [userId]
+                                });
+                            }
+                        } catch (err) {
+                            console.error(`❌ Failed to send ${action === 'add' ? 'welcome' : 'goodbye'} message:`, err.message);
                         }
                     }
 
                 } catch (err) {
-                    console.error('❌ group-participants.update error:', err)
+                    console.error('❌ group-participants.update error:', err);
                 }
             })
 
