@@ -628,127 +628,47 @@ function startBot() {
 
             sock.ev.on('group-participants.update', async (update) => {
                 try {
-                    const fs = require('fs');
-                    const path = require('path');
+                    if (!global.welcomeConfig?.enabled) return
 
-                    const SETTINGS_FILE = path.join(__dirname, 'data/groupSettings.json');
+                    const groupId = update.id
 
-                    function getGroupSettings(groupId) {
-                        try {
-                            if (!fs.existsSync(SETTINGS_FILE)) {
-                                return { welcome: false, goodbye: false };
-                            }
-                            const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-                            return data[groupId] || { welcome: false, goodbye: false };
-                        } catch {
-                            return { welcome: false, goodbye: false };
+                    for (const participant of update.participants) {
+
+                        const userId = typeof participant === 'string'
+                            ? participant
+                            : participant.phoneNumber || participant.id
+
+                        if (!userId) continue
+
+                        const memberName = userId.split('@')[0]
+
+                        if (update.action === 'add') {
+
+                            if (userId === sock.user.id) continue
+
+                            const text = `👋 Welcome @${memberName}!\n🎉 Glad to have you in this group!`
+
+                            await sock.sendMessage(groupId, {
+                                text,
+                                mentions: [userId]
+                            })
+
+                        } else if (update.action === 'remove') {
+
+                            const text = `ya @${memberName} has left the group.\nWe are not gonna miss you!`
+
+                            await sock.sendMessage(groupId, {
+                                text,
+                                mentions: [userId]
+                            })
+
                         }
-                    }
-
-                    const groupId = update.id;
-                    const settings = getGroupSettings(groupId);
-                    
-                    if (!settings.welcome && !settings.goodbye) return;
-
-                    const metadata = await sock.groupMetadata(groupId);
-                    const groupName = metadata?.subject || 'Group';
-                    const memberCount = metadata?.participants?.length || 0;
-
-                    try {
-                        let groupPicture = null;
-                        try {
-                            groupPicture = await sock.profilePictureUrl(groupId, 'image');
-                        } catch {
-                            groupPicture = null;
-                        }
-
-                        for (const participant of update.participants) {
-                            const userId = typeof participant === 'string'
-                                ? participant
-                                : participant.phoneNumber ? `${participant.phoneNumber}@s.whatsapp.net` : participant.id;
-
-                            if (!userId) continue;
-
-                            const memberName = userId.split('@')[0];
-
-                            if (update.action === 'add' && settings.welcome) {
-                                if (userId === sock.user.id) continue;
-
-                                const welcomeText = `
-┌─ム ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ɢʀᴏᴜᴘ
-│
-│ ᪣ ᴍᴇᴍʙᴇʀ: @${memberName}
-│ ᪣ ɢʀᴏᴜᴘ: ${groupName}
-│ ᪣ ᴛᴏᴛᴀʟ ᴍᴇᴍʙᴇʀs: ${memberCount}
-│
-│ ⭐ ᴡᴇ'ʀᴇ ʜᴀᴘᴘʏ ᴛᴏ ʜᴀᴠᴇ ʏᴏᴜ!
-│
-╰─────────◆─────────╯`.trim();
-
-                                if (groupPicture) {
-                                    try {
-                                        const imageBuffer = (await require('axios').get(groupPicture, { responseType: 'arraybuffer' })).data;
-                                        await sock.sendMessage(groupId, {
-                                            image: imageBuffer,
-                                            caption: welcomeText,
-                                            mentions: [userId]
-                                        });
-                                    } catch {
-                                        await sock.sendMessage(groupId, {
-                                            text: welcomeText,
-                                            mentions: [userId]
-                                        });
-                                    }
-                                } else {
-                                    await sock.sendMessage(groupId, {
-                                        text: welcomeText,
-                                        mentions: [userId]
-                                    });
-                                }
-
-                            } else if (update.action === 'remove' && settings.goodbye) {
-                                const goodbyeText = `
-┌─ム ɢᴏᴏᴅʙʏᴇ ғʀᴏᴍ ɢʀᴏᴜᴘ
-│
-│ ᪣ ᴍᴇᴍʙᴇʀ: @${memberName}
-│ ᪣ ɢʀᴏᴜᴘ: ${groupName}
-│ ᪣ ᴛᴏᴛᴀʟ ᴍᴇᴍʙᴇʀs: ${memberCount}
-│
-│ 👋 ᴛʜᴀɴᴋs ғᴏʀ ʙᴇɪɴɢ ᴛʜᴇʀᴇ!
-│
-╰─────────◆─────────╯`.trim();
-
-                                if (groupPicture) {
-                                    try {
-                                        const imageBuffer = (await require('axios').get(groupPicture, { responseType: 'arraybuffer' })).data;
-                                        await sock.sendMessage(groupId, {
-                                            image: imageBuffer,
-                                            caption: goodbyeText,
-                                            mentions: [userId]
-                                        });
-                                    } catch {
-                                        await sock.sendMessage(groupId, {
-                                            text: goodbyeText,
-                                            mentions: [userId]
-                                        });
-                                    }
-                                } else {
-                                    await sock.sendMessage(groupId, {
-                                        text: goodbyeText,
-                                        mentions: [userId]
-                                    });
-                                }
-                            }
-                        }
-
-                    } catch (err) {
-                        console.error('❌ group-participants.update message error:', err);
                     }
 
                 } catch (err) {
-                    console.error('❌ group-participants.update error:', err);
+                    console.error('❌ group-participants.update error:', err)
                 }
-            });
+            })
 
             sock.ev.on('messages.reaction', async (reactions) => {
                 console.log('💖 Reaction update:', reactions);
