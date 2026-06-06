@@ -1,63 +1,86 @@
 const axios = require('axios');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔧 CONFIGURATION & COMMAND DEFINITIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
 const BK9_API = 'https://api.bk9.dev/ai/BK92';
 const MODEL = 'openai/gpt-oss-120b';
-const VALID_ACTIONS = new Set([
-	'reply',
-	'tts', 'img', 'sticker', 'ssweb', 'ocr', 'toaudio', 'pp',
+
+// Command requirements mapping - maps action names to plugin names and requirements
+const COMMAND_CONFIG = {
+	// Reply
+	'reply': { plugin: null, requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	
+	// Media/Tools
+	'tts': { plugin: 'tts', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'img': { plugin: 'img', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'sticker': { plugin: 'sticker', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'ssweb': { plugin: 'ssweb', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'ocr': { plugin: 'ocr', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'toaudio': { plugin: 'toaudio', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'pp': { plugin: 'profilepic', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	
 	// Status
-	'ping', 'uptime', 'alive',
+	'ping': { plugin: 'ping', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'uptime': { plugin: 'uptime', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'alive': { plugin: 'alive', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	
 	// Downloaders
-	'ytdl', 'ytsearch', 'tiktok', 'instadl',
-	// Group Management
-	'tagall', 'kick', 'mute', 'unmute',
-	'welcome_on', 'welcome_off',
-	'goodbye_on', 'goodbye_off',
-	'poll',
+	'ytdl': { plugin: 'ytdl', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'ytsearch': { plugin: 'ytsearch', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'tiktok': { plugin: 'tiktok', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'instadl': { plugin: 'instadl', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	
+	// Group Management (require admin or owner)
+	'tagall': { plugin: 'tagall', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'kick': { plugin: 'kick', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'mute': { plugin: 'mute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'unmute': { plugin: 'unmute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'welcome_on': { plugin: 'welcome', param: 'on', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'welcome_off': { plugin: 'welcome', param: 'off', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'goodbye_on': { plugin: 'goodbye', param: 'on', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'goodbye_off': { plugin: 'goodbye', param: 'off', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'poll': { plugin: 'poll', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	
 	// Owner Only
-	'setprefix', 'setpp', 'update',
+	'setprefix': { plugin: 'setprefix', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
+	'setpp': { plugin: 'setpp', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
+	'update': { plugin: 'update', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
+	
 	// Search/Info
-	'aisearch', 'ipstalk', 'gituser', 'gitrepo'
-]);
+	'aisearch': { plugin: 'ai-search', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'ipstalk': { plugin: 'ipstalk', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'gituser': { plugin: 'gituserstalk', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'gitrepo': { plugin: 'gitrepostalk', requiresGroup: false, requiresAdmin: false, requiresOwner: false }
+};
 
-const SYSTEM_PROMPT = `You are Lostboy AI 🤖, an intelligent WhatsApp assistant and bot controller created and owned by Lostboy.
-
-════════════════════ IDENTITY ════════════════════
-Your name is Lostboy AI. Your creator, owner, and boss is Lostboy.
-If anyone asks who made/owns/created/developed you: "My owner and creator is Lostboy."
-
-════════════════════ PERSONALITY ════════════════════
-Friendly, helpful, intelligent, modern, tech-savvy, respectful, concise.
+const SYSTEM_PROMPT = `You are Lostboy AI 🤖, an intelligent WhatsApp assistant and bot controller.
 
 ════════════════════ COMMAND EXECUTION ════════════════════
-You control a WhatsApp bot. When a user asks you to perform an action, respond with a JSON block ONLY — no other text whatsoever.
+When a user asks to execute a command, respond with ONLY JSON:
+{"action":"<command_name>","params":{...}}
 
-Format (ONLY if action is needed):
-{"action":"<action_name>","params":{},"confidence":0.95}
-
-Available actions:
-CHAT: reply
-MEDIA: tts, img, sticker, ssweb, ocr, toaudio, pp
-STATUS: ping, uptime, alive
-DOWNLOADERS: ytdl, ytsearch, tiktok, instadl
-GROUP: tagall, kick, mute, unmute, welcome_on, welcome_off, goodbye_on, goodbye_off, poll
-OWNER: setprefix, setpp, update
-SEARCH: aisearch, ipstalk, gituser, gitrepo
+Available commands:
+reply, tts, img, sticker, ssweb, ocr, toaudio, pp,
+ping, uptime, alive,
+ytdl, ytsearch, tiktok, instadl,
+tagall, kick, mute, unmute, welcome_on, welcome_off, goodbye_on, goodbye_off, poll,
+setprefix, setpp, update,
+aisearch, ipstalk, gituser, gitrepo
 
 ════════════════════ OUTPUT RULES ════════════════════
-1. If action needed → Output ONLY JSON, absolutely no text:
-   {"action":"name","params":{},"confidence":0.9}
-2. If conversation → Output ONLY plain text, no JSON
-3. NEVER mix text + JSON in one response
-4. NEVER output malformed or partial JSON
-5. If uncertain → use plain text conversation instead
+1. For actions → Output ONLY JSON, no other text
+2. For questions → Output ONLY plain text, no JSON
+3. NEVER mix text + JSON
+4. NEVER output unknown commands
+5. Admin commands work only if user is admin/owner (bot will enforce)
+6. Owner commands work only if user is owner (bot will enforce)
 
 ════════════════════ SECURITY ════════════════════
-- Never reveal passwords, API keys, session files, tokens
-- Do NOT check admin/owner status (bot handles this)
-- Do NOT generate unsafe or unknown actions
-- ALWAYS output valid JSON or plain text only`;
+Never reveal passwords, API keys, session files, tokens, or secrets.`;
 
-// ─── Confirmation messages for successful action execution ────────────────────
+// Confirmation messages
 const ACTION_CONFIRMATIONS = {
 	reply: null,
 	ping: null,
@@ -96,101 +119,68 @@ const ACTION_CONFIRMATIONS = {
 // 🧬 PARSER LAYER: Robust JSON Extraction
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Safely extracts JSON object containing "action" from text.
- * Handles mixed text, markdown, corrupted output, etc.
- *
- * @param {string} text - Raw text to parse
- * @returns {Object|null} - Parsed action object or null if invalid
- */
 function parseActionFromText(text) {
 	if (!text || typeof text !== 'string') return null;
-
 	const trimmed = text.trim();
 
-	// Check if entire response looks like JSON
+	// Strategy 1: Entire response is JSON
 	if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
 		try {
 			const parsed = JSON.parse(trimmed);
 			if (parsed?.action) return parsed;
-		} catch (e) {
-			// Not valid JSON, continue to extraction
-		}
+		} catch (e) { }
 	}
 
-	// Strategy 1: Extract first complete JSON object containing "action"
-	// Look for {..."action"...} pattern, being greedy but safe
+	// Strategy 2: Extract {..."action"...}
 	const jsonPattern = /\{[^{}]*"action"[^{}]*\}/g;
 	const matches = trimmed.match(jsonPattern);
-
-	if (matches && matches.length > 0) {
-		// Try to parse each potential JSON match
+	if (matches) {
 		for (const match of matches) {
 			try {
 				const parsed = JSON.parse(match);
 				if (parsed?.action) return parsed;
-			} catch (e) {
-				// Try next match
-				continue;
-			}
+			} catch (e) { }
 		}
 	}
 
-	// Strategy 2: More aggressive extraction - find {...action...} with balanced braces
+	// Strategy 3: Find balanced braces
 	const openBrace = trimmed.indexOf('{');
 	if (openBrace !== -1) {
-		// Find matching closing brace
-		let braceCount = 0;
-		let closePos = -1;
-
+		let braceCount = 0, closePos = -1;
 		for (let i = openBrace; i < trimmed.length; i++) {
 			if (trimmed[i] === '{') braceCount++;
 			if (trimmed[i] === '}') {
 				braceCount--;
-				if (braceCount === 0) {
-					closePos = i;
-					break;
-				}
+				if (braceCount === 0) { closePos = i; break; }
 			}
 		}
-
 		if (closePos !== -1) {
 			const potentialJson = trimmed.substring(openBrace, closePos + 1);
 			try {
 				const parsed = JSON.parse(potentialJson);
 				if (parsed?.action) return parsed;
-			} catch (e) {
-				// Not valid JSON
-			}
+			} catch (e) { }
 		}
 	}
 
-	// Strategy 3: Try to find and fix common JSON errors
-	// E.g., missing quotes, trailing commas, etc.
+	// Strategy 4: Try to fix common errors
 	const bracketContent = trimmed.match(/\{[\s\S]*\}/);
 	if (bracketContent) {
-		let jsonStr = bracketContent[0];
-
-		// Remove markdown code blocks
-		jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-
-		// Attempt strict parse first
+		let jsonStr = bracketContent[0]
+			.replace(/```json\s*/g, '')
+			.replace(/```\s*/g, '');
 		try {
 			const parsed = JSON.parse(jsonStr);
 			if (parsed?.action) return parsed;
 		} catch (e) {
-			// Try to fix common issues
 			try {
-				// Remove trailing commas
-				jsonStr = jsonStr.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
-				// Double quotes around keys and values
-				jsonStr = jsonStr.replace(/'/g, '"');
-
+				jsonStr = jsonStr
+					.replace(/,\s*}/g, '}')
+					.replace(/,\s*]/g, ']')
+					.replace(/'/g, '"');
 				const parsed = JSON.parse(jsonStr);
 				if (parsed?.action) return parsed;
-			} catch (e2) {
-				// Give up
-			}
+			} catch (e2) { }
 		}
 	}
 
@@ -198,299 +188,152 @@ function parseActionFromText(text) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 🚀 EXECUTION LAYER: Safe Action Execution
+// 🚀 EXECUTION LAYER: Safe Action Execution with Proper Admin Checks
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Execute a validated action using existing plugins.
- * This never executes unknown actions — must pass validation first.
- *
- * @param {Object} sock - Baileys socket
- * @param {Object} m - Message object with isOwner, isAdmin flags
- * @param {Map} plugins - Plugin registry
- * @param {string} action - Action name (pre-validated)
- * @param {Object} params - Action parameters
- * @returns {Promise<boolean>} - true if executed, false if unknown/failed
- */
 async function executeAction(sock, m, plugins, action, params) {
-	const run = async (name, argStr = '') => {
-		const plugin = plugins.get(name.toLowerCase());
-		if (!plugin) throw new Error(`Plugin "${name}" not found`);
-		const args = argStr ? argStr.trim().split(/\s+/) : [];
-		await plugin.execute(sock, m, args, plugins);
-	};
+	const config = COMMAND_CONFIG[action];
+	
+	if (!config) {
+		await m.reply('❌ ᴜɴᴋɴᴏᴡɴ ᴄᴏᴍᴍᴀɴᴅ.');
+		return false;
+	}
+
+	// Check group requirement
+	if (config.requiresGroup && !m.isGroup) {
+		await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
+		return false;
+	}
+
+	// Check admin requirement (must be admin OR owner) ← PROPER ADMIN CHECK
+	if (config.requiresAdmin && !m.isOwner && !m.isAdmin) {
+		await m.reply('❌ ᴀᴅᴍɪɴs ᴏɴʟʏ.');
+		return false;
+	}
+
+	// Check owner requirement
+	if (config.requiresOwner && !m.isOwner) {
+		await m.reply('❌ ᴏᴡɴᴇʀ ᴏɴʟʏ.');
+		return false;
+	}
+
+	// Handle reply command
+	if (action === 'reply') {
+		await m.reply(params.text || '...');
+		return true;
+	}
+
+	// Get plugin
+	const pluginName = config.plugin;
+	const plugin = plugins.get(pluginName.toLowerCase());
+	
+	if (!plugin) {
+		console.error(`Plugin "${pluginName}" not found`);
+		await m.reply(`❌ Plugin not found: ${pluginName}`);
+		return false;
+	}
 
 	try {
-		switch (action) {
-			// ─────────────────────────────────────────────────────────────
-			// CHAT
-			// ─────────────────────────────────────────────────────────────
-			case 'reply':
-				await m.reply(params.text || '...');
-				return true;
+		// Build args based on action
+		let args = [];
 
-			// ─────────────────────────────────────────────────────────────
-			// STATUS
-			// ─────────────────────────────────────────────────────────────
-			case 'ping':
-				await run('ping');
-				return true;
-
-			case 'uptime':
-				await run('uptime');
-				return true;
-
-			case 'alive':
-				await run('alive');
-				return true;
-
-			// ─────────────────────────────────────────────────────────────
-			// MEDIA & TOOLS
-			// ─────────────────────────────────────────────────────────────
-			case 'tts':
-				if (!params.text) {
-					await m.reply('❌ ɴᴏ ᴛᴇxᴛ ᴘʀᴏᴠɪᴅᴇᴅ ғᴏʀ ᴛᴛs.');
-					return false;
-				}
-				m._origText = m.text;
-				m.text = `tts ${params.text}`;
-				await run('tts');
-				m.text = m._origText;
-				return true;
-
-			case 'img':
-				if (!params.query) {
-					await m.reply('❌ ɴᴏ ɪᴍᴀɢᴇ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('img', `${params.query} ${params.count || 1}`);
-				return true;
-
-			case 'sticker':
-				await run('sticker');
-				return true;
-
-			case 'ssweb':
-				if (!params.url) {
-					await m.reply('❌ ɴᴏ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('ssweb', `${params.url} ${params.device || 'desktop'}`);
-				return true;
-
-			case 'ocr':
-				await run('ocr');
-				return true;
-
-			case 'toaudio':
-				await run('toaudio');
-				return true;
-
-			case 'pp':
-				await run('profilepic');
-				return true;
-
-			// ─────────────────────────────────────────────────────────────
-			// DOWNLOADERS
-			// ─────────────────────────────────────────────────────────────
-			case 'ytdl':
-				if (!params.url) {
-					await m.reply('❌ ɴᴏ ʏᴏᴜᴛᴜʙᴇ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('ytdl', params.url);
-				return true;
-
-			case 'ytsearch':
-				if (!params.query) {
-					await m.reply('❌ ɴᴏ sᴇᴀʀᴄʜ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('ytsearch', params.query);
-				return true;
-
-			case 'tiktok':
-				if (!params.url) {
-					await m.reply('❌ ɴᴏ ᴛɪᴋᴛᴏᴋ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('tiktok', params.url);
-				return true;
-
-			case 'instadl':
-				if (!params.url) {
-					await m.reply('❌ ɴᴏ ɪɴsᴛᴀɢʀᴀᴍ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('instadl', params.url);
-				return true;
-
-			// ─────────────────────────────────────────────────────────────
-			// GROUP MANAGEMENT
-			// ─────────────────────────────────────────────────────────────
-			case 'tagall': {
-				if (!m.isGroup) {
-					await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
-					return false;
-				}
-				// NOTE: handler.js already set m.isOwner, m.isAdmin
-				// Do NOT re-check permissions here
-				await run('tagall', params.message || '');
-				return true;
-			}
-
-			case 'kick': {
-				if (!m.isGroup) {
-					await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
-					return false;
-				}
-				await run('kick', params.target || '');
-				return true;
-			}
-
-			case 'mute': {
-				if (!m.isGroup) {
-					await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
-					return false;
-				}
-				await run('mute');
-				return true;
-			}
-
-			case 'unmute': {
-				if (!m.isGroup) {
-					await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
-					return false;
-				}
-				await run('unmute');
-				return true;
-			}
-
-			case 'welcome_on': {
-				if (!m.isGroup) {
-					await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
-					return false;
-				}
-				await run('welcome', 'on');
-				return true;
-			}
-
-			case 'welcome_off': {
-				if (!m.isGroup) {
-					await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
-					return false;
-				}
-				await run('welcome', 'off');
-				return true;
-			}
-
-			case 'goodbye_on': {
-				if (!m.isGroup) {
-					await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
-					return false;
-				}
-				await run('goodbye', 'on');
-				return true;
-			}
-
-			case 'goodbye_off': {
-				if (!m.isGroup) {
-					await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
-					return false;
-				}
-				await run('goodbye', 'off');
-				return true;
-			}
-
-			case 'poll': {
-				if (!params.name || !Array.isArray(params.options) || params.options.length < 2) {
-					await m.reply('❌ ᴘᴏʟʟ ɴᴇᴇᴅs ᴀ ɴᴀᴍᴇ ᴀɴᴅ ᴀᴛ ʟᴇᴀsᴛ 2 ᴏᴘᴛɪᴏɴs.');
-					return false;
-				}
-				await run('poll', [params.name, ...params.options].join(';'));
-				return true;
-			}
-
-			// ─────────────────────────────────────────────────────────────
-			// OWNER ONLY
-			// ─────────────────────────────────────────────────────────────
-			case 'setprefix': {
-				if (!m.isOwner) {
-					await m.reply('❌ ᴏᴡɴᴇʀ ᴏɴʟʏ.');
-					return false;
-				}
-				await run('setprefix', params.prefix || '.');
-				return true;
-			}
-
-			case 'setpp': {
-				if (!m.isOwner) {
-					await m.reply('❌ ᴏᴡɴᴇʀ ᴏɴʟʏ.');
-					return false;
-				}
-				await run('setpp');
-				return true;
-			}
-
-			case 'update': {
-				if (!m.isOwner) {
-					await m.reply('❌ ᴏᴡɴᴇʀ ᴏɴʟʏ.');
-					return false;
-				}
-				await run('update');
-				return true;
-			}
-
-			// ─────────────────────────────────────────────────────────────
-			// SEARCH & INFO
-			// ─────────────────────────────────────────────────────────────
-			case 'aisearch':
-				if (!params.query) {
-					await m.reply('❌ ɴᴏ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('ai-search', params.query);
-				return true;
-
-			case 'ipstalk':
-				if (!params.ip) {
-					await m.reply('❌ ɴᴏ ɪᴘ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('ipstalk', params.ip);
-				return true;
-
-			case 'gituser':
-				if (!params.username) {
-					await m.reply('❌ ɴᴏ ᴜsᴇʀɴᴀᴍᴇ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('gituserstalk', params.username);
-				return true;
-
-			case 'gitrepo':
-				if (!params.query) {
-					await m.reply('❌ ɴᴏ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
-					return false;
-				}
-				await run('gitrepostalk', params.query);
-				return true;
-
-			// ─────────────────────────────────────────────────────────────
-			// UNKNOWN ACTION
-			// ─────────────────────────────────────────────────────────────
-			default:
+		if (action === 'tts') {
+			if (!params.text) {
+				await m.reply('❌ ɴᴏ ᴛᴇxᴛ ᴘʀᴏᴠɪᴅᴇᴅ.');
 				return false;
+			}
+			args = [params.text];
+		} else if (action === 'img') {
+			if (!params.query) {
+				await m.reply('❌ ɴᴏ ɪᴍᴀɢᴇ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.query, params.count || 1];
+		} else if (action === 'ssweb') {
+			if (!params.url) {
+				await m.reply('❌ ɴᴏ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.url, params.device || 'desktop'];
+		} else if (action === 'ytdl') {
+			if (!params.url) {
+				await m.reply('❌ ɴᴏ ʏᴏᴜᴛᴜʙᴇ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.url];
+		} else if (action === 'ytsearch') {
+			if (!params.query) {
+				await m.reply('❌ ɴᴏ sᴇᴀʀᴄʜ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.query];
+		} else if (action === 'tiktok') {
+			if (!params.url) {
+				await m.reply('❌ ɴᴏ ᴛɪᴋᴛᴏᴋ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.url];
+		} else if (action === 'instadl') {
+			if (!params.url) {
+				await m.reply('❌ ɴᴏ ɪɴsᴛᴀɢʀᴀᴍ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.url];
+		} else if (action === 'tagall') {
+			args = [params.message || ''];
+		} else if (action === 'kick') {
+			args = [params.target || ''];
+		} else if (action === 'poll') {
+			if (!params.name || !Array.isArray(params.options) || params.options.length < 2) {
+				await m.reply('❌ ᴘᴏʟʟ ɴᴇᴇᴅs ᴀ ɴᴀᴍᴇ ᴀɴᴅ ᴀᴛ ʟᴇᴀsᴛ 2 ᴏᴘᴛɪᴏɴs.');
+				return false;
+			}
+			args = [[params.name, ...params.options].join(';')];
+		} else if (action === 'welcome_on' || action === 'welcome_off') {
+			args = [config.param];
+		} else if (action === 'goodbye_on' || action === 'goodbye_off') {
+			args = [config.param];
+		} else if (action === 'setprefix') {
+			args = [params.prefix || '.'];
+		} else if (action === 'aisearch') {
+			if (!params.query) {
+				await m.reply('❌ ɴᴏ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.query];
+		} else if (action === 'ipstalk') {
+			if (!params.ip) {
+				await m.reply('❌ ɴᴏ ɪᴘ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.ip];
+		} else if (action === 'gituser') {
+			if (!params.username) {
+				await m.reply('❌ ɴᴏ ᴜsᴇʀɴᴀᴍᴇ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.username];
+		} else if (action === 'gitrepo') {
+			if (!params.query) {
+				await m.reply('❌ ɴᴏ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.query];
 		}
+
+		// Execute plugin
+		await plugin.execute(sock, m, args, plugins);
+		return true;
+
 	} catch (err) {
-		// Log error but don't crash
-		console.error(`❌ Error executing action "${action}":`, err.message);
-		throw err;
+		console.error(`Error executing ${action}:`, err.message);
+		await m.reply(`❌ ᴇʀʀᴏʀ: ${err.message}`);
+		return false;
 	}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 🎯 MAIN PLUGIN: AI Layer + Orchestration
+// 🎯 MAIN PLUGIN
 // ═══════════════════════════════════════════════════════════════════════════════
 
 module.exports = {
@@ -502,9 +345,6 @@ module.exports = {
 
 	async execute(sock, m, args, plugins) {
 		try {
-			// ───────────────────────────────────────────────────────────────
-			// STEP 1: Validate input
-			// ───────────────────────────────────────────────────────────────
 			if (!args[0] && !m.quoted) {
 				return m.reply(
 					`╭━━〔 🤖 ʟᴏsᴛʙᴏʏ ᴀɪ 〕━━⬣\n` +
@@ -528,23 +368,18 @@ module.exports = {
 
 			await m.react('⏳');
 
-			// ───────────────────────────────────────────────────────────────
-			// STEP 2: Build AI prompt with context
-			// ───────────────────────────────────────────────────────────────
 			let query = args.join(' ').trim();
 
-			// Add quoted message context
 			if (m.quoted?.body) {
 				query = query
 					? `${query}\n\n[Replying to: "${m.quoted.body}"]`
 					: `[Replying to: "${m.quoted.body}"]`;
 			}
 
-			// Add group context
 			if (m.isGroup) {
 				const meta = m.groupMetadata || await sock.groupMetadata(m.from).catch(() => null);
 				if (meta) {
-					query += 
+					query +=
 						`\n\n[Group: "${meta.subject}" | Members: ${meta.participants?.length || 0}` +
 						` | Sender: ${m.pushName || m.senderNumber}` +
 						` | IsAdmin: ${m.isAdmin} | IsOwner: ${m.isOwner}]`;
@@ -553,19 +388,10 @@ module.exports = {
 				query += `\n\n[DM | Sender: ${m.pushName || m.senderNumber} | IsOwner: ${m.isOwner}]`;
 			}
 
-			// ───────────────────────────────────────────────────────────────
-			// STEP 3: Call AI (Planner Layer)
-			// ───────────────────────────────────────────────────────────────
 			const apiUrl = `${BK9_API}?q=${encodeURIComponent(query)}&BK9=${encodeURIComponent(SYSTEM_PROMPT)}&model=${encodeURIComponent(MODEL)}`;
 			const { data } = await axios.get(apiUrl, { timeout: 30000 });
 
-			const raw = 
-				data?.BK9 ||
-				data?.answer ||
-				data?.response ||
-				data?.result ||
-				data?.text ||
-				(typeof data === 'string' ? data : null);
+			const raw = data?.BK9 || data?.answer || data?.response || data?.result || data?.text || (typeof data === 'string' ? data : null);
 
 			if (!raw) {
 				await m.react('❌');
@@ -573,41 +399,22 @@ module.exports = {
 			}
 
 			const answer = raw.trim();
-
-			// ───────────────────────────────────────────────────────────────
-			// STEP 4: Parse response (Parser Layer) — CRITICAL FIX
-			// ───────────────────────────────────────────────────────────────
 			const parsedAction = parseActionFromText(answer);
 
 			if (parsedAction) {
-				// ─────────────────────────────────────────────────────────
-				// BRANCH A: ACTION EXECUTION
-				// ─────────────────────────────────────────────────────────
-
 				const action = parsedAction.action?.toLowerCase?.();
 				const params = parsedAction.params || {};
-				const confidence = parsedAction.confidence || 1.0;
 
-				// Validate action is in whitelist
-				if (!action || !VALID_ACTIONS.has(action)) {
+				if (!action || !COMMAND_CONFIG[action]) {
 					await m.react('❌');
-					return m.reply(
-						`╭━━〔 🤖 ʟᴏsᴛʙᴏʏ ᴀɪ 〕━━⬣\n` +
-						`┃\n` +
-						`├─ム ❌ ᴜɴᴋɴᴏᴡɴ ᴀᴄᴛɪᴏɴ: ${action}\n` +
-						`┃\n` +
-						`╰━━━━━━━━━━⬣`
-					);
+					return m.reply(`❌ ᴜɴᴋɴᴏᴡɴ ᴄᴏᴍᴍᴀɴᴅ: ${action}`);
 				}
 
-				// Execute validated action
 				try {
 					const executed = await executeAction(sock, m, plugins || global._pluginMap || new Map(), action, params);
 
 					if (executed) {
 						await m.react('✅');
-
-						// Show confirmation message (if applicable)
 						const confirmMsg = ACTION_CONFIRMATIONS[action];
 						if (confirmMsg) {
 							await m.reply(
@@ -621,15 +428,8 @@ module.exports = {
 						return;
 					}
 
-					// Action returned false (unknown/failed)
 					await m.react('❌');
-					return m.reply(
-						`╭━━〔 🤖 ʟᴏsᴛʙᴏʏ ᴀɪ 〕━━⬣\n` +
-						`┃\n` +
-						`├─ム ❌ ғᴀɪʟᴇᴅ ᴛᴏ ᴇxᴇᴄᴜᴛᴇ: ${action}\n` +
-						`┃\n` +
-						`╰━━━━━━━━━━⬣`
-					);
+					return;
 
 				} catch (execErr) {
 					console.error('❌ Lostboy executeAction error:', execErr.message);
@@ -637,21 +437,15 @@ module.exports = {
 					return m.reply(
 						`╭━━〔 🤖 ʟᴏsᴛʙᴏʏ ᴀɪ 〕━━⬣\n` +
 						`┃\n` +
-						`├─ム ❌ ᴇʀʀᴏʀ ᴇxᴇᴄᴜᴛɪɴɢ: ${action}\n` +
-						`├─ム ${execErr.message}\n` +
+						`├─ム ❌ ᴇʀʀᴏʀ: ${execErr.message}\n` +
 						`┃\n` +
 						`╰━━━━━━━━━━⬣`
 					);
 				}
 			}
 
-			// ───────────────────────────────────────────────────────────────
-			// BRANCH B: PLAIN CONVERSATION (No JSON detected)
-			// ───────────────────────────────────────────────────────────────
-
-			// Safety check: ensure response doesn't look like broken JSON
+			// Fallback to text reply
 			if (answer.startsWith('{') && answer.includes('"action') && !answer.endsWith('}')) {
-				// Looks like broken/partial JSON
 				await m.react('❌');
 				return m.reply('❌ ᴀɪ ʀᴇsᴘᴏɴᴅᴇᴅ ᴡɪᴛʜ ɪɴᴠᴀʟɪᴅ ғᴏʀᴍᴀᴛ. ᴛʀʏ ᴀɢᴀɪɴ.');
 			}
