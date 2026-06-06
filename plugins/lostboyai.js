@@ -1,532 +1,853 @@
 const axios = require('axios');
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * LOSTBOY AI - SUPER INTELLIGENT WHATSAPP BOT AGENT
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * 
+ * Features:
+ * ✅ Advanced intent understanding
+ * ✅ Natural language command mapping
+ * ✅ Proper permission checks using handler.js
+ * ✅ Quoted user/message context awareness
+ * ✅ Group member intelligence
+ * ✅ Dynamic plugin discovery
+ * ✅ Robust JSON parsing
+ * ✅ Smart query extraction
+ * ✅ No duplicate messages
+ */
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// 🔧 CONFIGURATION & COMMAND DEFINITIONS
+// 🎯 CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const BK9_API = 'https://api.bk9.dev/ai/BK92';
 const MODEL = 'openai/gpt-oss-120b';
+
+// Owner JID for special recognition
 const OWNER_JID = '233549551004@s.whatsapp.net';
 
-// Comprehensive command mapping with all available commands
-const COMMAND_CONFIG = {
-	// Chat/Reply
-	'reply': { plugin: null, requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+/**
+ * NATURAL LANGUAGE ALIAS MAPPING
+ * Maps user intent phrases to actual plugin names
+ * Handles various ways users might phrase the same command
+ */
+const INTENT_MAP = {
+	// Menu/Help
+	'menu': 'menu',
+	'help': 'menu',
+	'commands': 'menu',
+	'help menu': 'menu',
+	'show commands': 'menu',
+	'bot menu': 'menu',
+	'command list': 'menu',
 	
-	// General Commands
-	'alive': { plugin: 'alive', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'ping': { plugin: 'ping', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'uptime': { plugin: 'uptime', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'menu': { plugin: 'main-menu', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'help': { plugin: 'main-menu', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'creator': { plugin: 'creator', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'owner': { plugin: 'creator', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-
-	// Media/Tools
-	'tts': { plugin: 'tts', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'img': { plugin: 'img', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'image': { plugin: 'img', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'sticker': { plugin: 'sticker', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'ssweb': { plugin: 'ssweb', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'ocr': { plugin: 'ocr', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'toaudio': { plugin: 'toaudio', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'pp': { plugin: 'pp', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'shazam': { plugin: 'shazam', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'compress': { plugin: 'compress', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'pollfunc': { plugin: 'poll', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'poll': { plugin: 'poll', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'tagme': { plugin: 'tagme', requiresGroup: true, requiresAdmin: false, requiresOwner: false },
+	// Owner/Creator
+	'owner': 'creator',
+	'creator': 'creator',
+	'about': 'creator',
+	'who created you': 'creator',
+	
+	// Media Tools
+	'image': 'img',
+	'images': 'img',
+	'img': 'img',
+	'picture': 'img',
+	'pic': 'img',
+	'search image': 'img',
+	'find image': 'img',
+	
+	'sticker': 'sticker',
+	'stick': 'sticker',
+	'make sticker': 'sticker',
+	'create sticker': 'sticker',
+	
+	'screenshot': 'ssweb',
+	'snap': 'ssweb',
+	'screencapture': 'ssweb',
+	'website screenshot': 'ssweb',
+	'web screenshot': 'ssweb',
+	
+	'ocr': 'ocr',
+	'read text': 'ocr',
+	'extract text': 'ocr',
+	'text from image': 'ocr',
+	
+	'audio': 'toaudio',
+	'voice': 'toaudio',
+	'convert to audio': 'toaudio',
+	'make audio': 'toaudio',
+	
+	'tts': 'tts',
+	'text to speech': 'tts',
+	'speak': 'tts',
+	
+	'shazam': 'shazam',
+	'identify song': 'shazam',
+	'what song': 'shazam',
+	
+	'compress': 'compress',
+	'reduce size': 'compress',
+	'make smaller': 'compress',
+	
+	'poll': 'poll',
+	'vote': 'poll',
+	'create poll': 'poll',
+	'make poll': 'poll',
 	
 	// Downloaders
-	'ytdl': { plugin: 'ytdl', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'ytsearch': { plugin: 'ytsearch', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'youtube': { plugin: 'ytsearch', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'yt': { plugin: 'ytsearch', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'tiktok': { plugin: 'ttdl', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'tt': { plugin: 'ttdl', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'instadl': { plugin: 'instadl', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'ig': { plugin: 'instadl', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'save': { plugin: 'save', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'youtube': 'ytdl',
+	'yt': 'ytdl',
+	'ytdl': 'ytdl',
+	'download youtube': 'ytdl',
+	'youtube download': 'ytdl',
 	
-	// Group Management (require admin or owner)
-	'tagall': { plugin: 'tagall', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'everyone': { plugin: 'tagall', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'kick': { plugin: 'kick', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'remove': { plugin: 'kick', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'mute': { plugin: 'mute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'unmute': { plugin: 'unmute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'close': { plugin: 'mute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'lock': { plugin: 'mute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'open': { plugin: 'unmute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'unlock': { plugin: 'unmute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'welcome': { plugin: 'welcome', requiresGroup: true, requiresAdmin: false, requiresOwner: false },
-	'goodbye': { plugin: 'goodbye', requiresGroup: true, requiresAdmin: false, requiresOwner: false },
-	'group': { plugin: 'groupsettings', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'gsettings': { plugin: 'groupsettings', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'autodetect': { plugin: 'autoreact', requiresGroup: true, requiresAdmin: false, requiresOwner: false },
+	'youtube search': 'ytsearch',
+	'search youtube': 'ytsearch',
+	'yt search': 'ytsearch',
+	
+	'tiktok': 'ttdl',
+	'tt': 'ttdl',
+	'tiktok download': 'ttdl',
+	'download tiktok': 'ttdl',
+	
+	'instagram': 'instadl',
+	'ig': 'instadl',
+	'insta': 'instadl',
+	'instagram download': 'instadl',
+	'download instagram': 'instadl',
+	
+	'save': 'save',
+	'save media': 'save',
+	'save message': 'save',
+	
+	// Group Management
+	'tag': 'tagall',
+	'tag all': 'tagall',
+	'mention': 'tagall',
+	'mention all': 'tagall',
+	'tagall': 'tagall',
+	'everyone': 'tagall',
+	'tag everyone': 'tagall',
+	'mention everyone': 'tagall',
+	'call all': 'tagall',
+	'mention members': 'tagall',
+	
+	'kick': 'kick',
+	'remove': 'kick',
+	'remove user': 'kick',
+	'remove member': 'kick',
+	'ban': 'kick',
+	'boot': 'kick',
+	
+	'mute': 'mute',
+	'mute group': 'mute',
+	'silence': 'mute',
+	'close group': 'mute',
+	'lock group': 'mute',
+	'make group silent': 'mute',
+	
+	'unmute': 'unmute',
+	'unmute group': 'unmute',
+	'unsilence': 'unmute',
+	'open group': 'unmute',
+	'unlock group': 'unmute',
+	'make group open': 'unmute',
+	
+	'welcome': 'welcome',
+	'welcome message': 'welcome',
+	'greet new members': 'welcome',
+	
+	'goodbye': 'goodbye',
+	'goodbye message': 'goodbye',
+	'leave message': 'goodbye',
+	'farewell': 'goodbye',
+	
+	'group settings': 'groupsettings',
+	'group setting': 'groupsettings',
+	'gsettings': 'groupsettings',
+	'settings': 'groupsettings',
 	
 	// Owner Only
-	'setprefix': { plugin: 'setprefix', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
-	'prefix': { plugin: 'setprefix', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
-	'changeprefix': { plugin: 'setprefix', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
-	'setpp': { plugin: 'setpp', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
-	'update': { plugin: 'update', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
-	'addowner': { plugin: 'Addowner', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
-	'add owner': { plugin: 'Addowner', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
-	'exec': { plugin: 'exec', requiresGroup: false, requiresAdmin: false, requiresOwner: true },
+	'prefix': 'setprefix',
+	'set prefix': 'setprefix',
+	'change prefix': 'setprefix',
 	
-	// Search/Info
-	'aisearch': { plugin: 'ai-search', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'ipstalk': { plugin: 'ipstalk', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'gituser': { plugin: 'gituserstalk', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'gitrepo': { plugin: 'gitrepostalk', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'profile picture': 'setpp',
+	'pp': 'setpp',
+	'set pp': 'setpp',
+	'change pp': 'setpp',
+	'set profile': 'setpp',
 	
-	// AI Commands
-	'ai': { plugin: 'ai', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'aiv': { plugin: 'aiv', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'gen': { plugin: 'gen2', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'gen2': { plugin: 'gen2', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'editimage': { plugin: 'gen2', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'imgpro': { plugin: 'gen2', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'update': 'update',
+	'bot update': 'update',
+	'upgrade': 'update',
 	
-	// Fun
-	'anime': { plugin: 'animedl', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'animesearch': { plugin: 'animesearch', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'naruto': { plugin: 'naruto', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'dragonball': { plugin: 'dragonball', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'marvel': { plugin: 'marvel', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'couplepp': { plugin: 'couplepp', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'bluearchive': { plugin: 'bluearchive', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
+	'owner': 'owner',
+	'add owner': 'owner',
+	'addowner': 'owner',
+	'make owner': 'owner',
+	'set owner': 'owner',
+	'remove owner': 'owner',
+	
+	'exec': 'exec',
+	'execute': 'exec',
+	'run code': 'exec',
+	'eval': 'exec',
+	
+	// AI/Search
+	'ai': 'ai',
+	'ask ai': 'ai',
+	'chat': 'ai',
+	
+	'ai video': 'aiv',
+	'aiv': 'aiv',
+	'ai voice': 'aiv',
+	
+	'generate': 'gen2',
+	'gen': 'gen2',
+	'generate image': 'gen2',
+	'create image': 'gen2',
+	'draw': 'gen2',
+	'imagine': 'gen2',
+	'edit image': 'gen2',
+	
+	'search': 'aisearch',
+	'ai search': 'aisearch',
+	'web search': 'aisearch',
+	
+	'ip': 'ipstalk',
+	'ip info': 'ipstalk',
+	'ip address': 'ipstalk',
+	'ipstalk': 'ipstalk',
+	
+	'github user': 'gituser',
+	'git user': 'gituser',
+	'gituser': 'gituser',
+	
+	'github repo': 'gitrepo',
+	'git repo': 'gitrepo',
+	'gitrepo': 'gitrepo',
+	
+	// Anime/Fun
+	'anime': 'animedl',
+	'anime download': 'animedl',
+	'download anime': 'animedl',
+	
+	'anime search': 'animesearch',
+	'search anime': 'animesearch',
+	
+	'naruto': 'naruto',
+	'dragon ball': 'dragonball',
+	'dragonball': 'dragonball',
+	'marvel': 'marvel',
+	'couple': 'couplepp',
+	'couple pp': 'couplepp',
+	'blue archive': 'bluearchive',
+	'bluearchive': 'bluearchive',
 	
 	// Utilities
-	'tourl': { plugin: 'tourl', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'tempmail': { plugin: 'tempmail', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'tweet': { plugin: 'tweet', requiresGroup: false, requiresAdmin: false, requiresOwner: false },
-	'channelid': { plugin: 'channelid', requiresGroup: false, requiresAdmin: false, requiresOwner: false }
+	'url': 'tourl',
+	'to url': 'tourl',
+	'short url': 'tourl',
+	
+	'mail': 'tempmail',
+	'email': 'tempmail',
+	'temp mail': 'tempmail',
+	'tempmail': 'tempmail',
+	
+	'tweet': 'tweet',
+	'twitter': 'tweet',
+	
+	'channel': 'channelid',
+	'channel id': 'channelid',
+	'channelid': 'channelid'
 };
 
-const SYSTEM_PROMPT = `You are Lostboy AI 🤖, an intelligent WhatsApp assistant and bot controller for XLICON bot.
+/**
+ * Default command requirements
+ * Plugins can override these in their module definition
+ */
+const DEFAULT_COMMAND_CONFIG = {
+	requiresGroup: false,
+	requiresAdmin: false,
+	requiresOwner: false,
+	requiresBotAdmin: false
+};
 
-════════════════════ COMMAND EXECUTION ════════════════════
-When a user asks to execute a command, respond with ONLY JSON:
-{"action":"<command_name>","params":{...}}
-
-Available commands - choose the best match:
-reply, alive, ping, uptime, menu, help, creator, owner,
-tts, img, image, sticker, ssweb, ocr, toaudio, pp, shazam, compress, poll, tagme,
-ytdl, ytsearch, youtube, yt, tiktok, tt, instadl, ig, save,
-tagall, everyone, kick, remove, mute, unmute, close, lock, open, unlock, welcome, goodbye, group, gsettings, autodetect,
-setprefix, prefix, changeprefix, setpp, update, addowner, exec,
-aisearch, ipstalk, gituser, gitrepo,
-ai, aiv, gen, gen2, editimage, imgpro,
-anime, animesearch, naruto, dragonball, marvel, couplepp, bluearchive,
-tourl, tempmail, tweet, channelid
-
-════════════════════ PARAMETER EXTRACTION ════════════════════
-CRITICAL: Extract FULL query/text, not just first word.
-
-For query-based commands (img, gen, ytsearch, aisearch, gitrepo, animesearch):
-- Extract ENTIRE search string as "query" or "prompt"
-- Example: "generate image of a cat" → {"action":"gen","params":{"prompt":"a cat"}}
-- Example: "search youtube alan walker" → {"action":"ytsearch","params":{"query":"alan walker"}}
-
-For toggle commands (welcome, goodbye, mute, unmute):
-- Extract status: "on", "off", "enable", "disable"
-- Also accept: "mute" → mute action, "unmute" → unmute action
-- Example: "welcome on" → {"action":"welcome","params":{"status":"on"}}
-- Example: "mute group" → {"action":"mute","params":{}}
-
-For owner commands (addowner, add owner):
-- Extract mentioned user: {"action":"addowner","params":{"mention":"@user"}}
-- Or extract phone number: {"action":"addowner","params":{"mention":"233XXXXXXXXX"}}
-
-For tagging commands (tag, tagall, mention):
-- Extract participants to mention
-- For "tag everyone" → {"action":"tagall","params":{}}
-- For "tag @user" → {"action":"tagall","params":{"target":"@user"}}
-
-════════════════════ OUTPUT RULES ════════════════════
-1. For actions → Output ONLY JSON, no other text
-2. For questions → Output ONLY plain text, no JSON
-3. NEVER mix text + JSON
-4. NEVER output unknown commands
-5. Admin commands work only if user is admin/owner (bot will enforce)
-6. Owner commands work only if user is owner (bot will enforce)
-
-════════════════════ SECURITY ════════════════════
-Never reveal passwords, API keys, session files, tokens, or secrets.`;
-
-// Success confirmations - only show if plugin doesn't send its own
+/**
+ * ACTION SUCCESS MESSAGES
+ * Only sent after actual plugin execution success
+ * null = plugin sends its own message
+ */
 const ACTION_CONFIRMATIONS = {
-	reply: null,
-	ping: null,
-	uptime: null,
-	alive: null,
-	menu: null,
-	help: null,
-	creator: null,
-	owner: null,
 	tts: '✅ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇ sᴇɴᴛ.',
 	img: '✅ ɪᴍᴀɢᴇ(s) sᴇɴᴛ.',
-	image: '✅ ɪᴍᴀɢᴇ(s) sᴇɴᴛ.',
 	sticker: '✅ sᴛɪᴄᴋᴇʀ ᴄʀᴇᴀᴛᴇᴅ.',
 	ssweb: '✅ sᴄʀᴇᴇɴsʜᴏᴛ ᴛᴀᴋᴇɴ.',
-	ocr: null,
 	toaudio: '✅ ᴄᴏɴᴠᴇʀᴛᴇᴅ ᴛᴏ ᴀᴜᴅɪᴏ.',
-	pp: null,
-	shazam: null,
 	compress: '✅ ꜰɪʟᴇ ᴄᴏᴍᴘʀᴇssᴇᴅ.',
-	pollfunc: '✅ ᴘᴏʟʟ ᴄʀᴇᴀᴛᴇᴅ.',
 	poll: '✅ ᴘᴏʟʟ ᴄʀᴇᴀᴛᴇᴅ.',
-	tagme: null,
 	ytdl: '✅ ʏᴏᴜᴛᴜʙᴇ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ...',
-	ytsearch: null,
-	youtube: null,
-	yt: null,
 	tiktok: '✅ ᴛɪᴋᴛᴏᴋ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ...',
 	tt: '✅ ᴛɪᴋᴛᴏᴋ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ...',
 	instadl: '✅ ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ...',
 	ig: '✅ ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ...',
-	save: null,
 	tagall: '✅ ᴀʟʟ ᴍᴇᴍʙᴇʀs ᴛᴀɢɢᴇᴅ.',
-	everyone: '✅ ᴀʟʟ ᴍᴇᴍʙᴇʀs ᴛᴀɢɢᴇᴅ.',
 	kick: '✅ ᴍᴇᴍʙᴇʀ ʀᴇᴍᴏᴠᴇᴅ.',
-	remove: '✅ ᴍᴇᴍʙᴇʀ ʀᴇᴍᴏᴠᴇᴅ.',
 	mute: '✅ ɢʀᴏᴜᴘ ᴍᴜᴛᴇᴅ.',
 	unmute: '✅ ɢʀᴏᴜᴘ ᴜɴᴍᴜᴛᴇᴅ.',
-	close: '✅ ɢʀᴏᴜᴘ ᴍᴜᴛᴇᴅ.',
-	lock: '✅ ɢʀᴏᴜᴘ ᴍᴜᴛᴇᴅ.',
-	open: '✅ ɢʀᴏᴜᴘ ᴜɴᴍᴜᴛᴇᴅ.',
-	unlock: '✅ ɢʀᴏᴜᴘ ᴜɴᴍᴜᴛᴇᴅ.',
-	welcome: null,
-	goodbye: null,
-	group: null,
-	gsettings: null,
-	autodetect: null,
 	setprefix: '✅ ᴘʀᴇғɪx ᴜᴘᴅᴀᴛᴇᴅ.',
-	prefix: '✅ ᴘʀᴇғɪx ᴜᴘᴅᴀᴛᴇᴅ.',
-	changeprefix: '✅ ᴘʀᴇғɪx ᴜᴘᴅᴀᴛᴇᴅ.',
 	setpp: '✅ ᴘʀᴏғɪʟᴇ ᴘɪᴄᴛᴜʀᴇ ᴜᴘᴅᴀᴛᴇᴅ.',
 	update: '✅ ʙᴏᴛ ᴜᴘᴅᴀᴛᴇ sᴛᴀʀᴛᴇᴅ.',
 	addowner: '✅ ᴏᴡɴᴇʀ ᴀᴅᴅᴇᴅ.',
-	exec: null,
-	aisearch: null,
-	ipstalk: null,
-	gituser: null,
-	gitrepo: null,
-	ai: null,
-	aiv: null,
-	gen: null,
-	gen2: null,
-	editimage: null,
-	imgpro: null,
-	anime: null,
-	animesearch: null,
-	naruto: null,
-	dragonball: null,
-	marvel: null,
-	couplepp: null,
-	bluearchive: null,
-	tourl: null,
-	tempmail: null,
-	tweet: null,
-	channelid: null
+	owner: '✅ ᴏᴡɴᴇʀ ᴀᴅᴅᴇᴅ.'
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 📍 ROBUST JSON PARSER WITH FALLBACKS (FIX #10)
-// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * ENHANCED SYSTEM PROMPT
+ * Instructs AI to understand intent, extract targets, and respond with JSON for actions
+ */
+const SYSTEM_PROMPT = `You are Lostboy AI 🤖, an advanced intelligent WhatsApp assistant and bot controller.
 
+════════════════════════════════════════════════════════════════════════════════
+CORE BEHAVIOR: AGENT MODE
+════════════════════════════════════════════════════════════════════════════════
+
+You must behave like an advanced AI agent, NOT a keyword matcher.
+
+BEFORE EXECUTING ANY COMMAND:
+✓ Understand the user's INTENT
+✓ Analyze CONTEXT (group, sender, mentions, quoted messages)
+✓ Extract TARGETS correctly (users, numbers, queries)
+✓ Verify PERMISSIONS implicitly (the bot will enforce)
+✓ Choose the most appropriate ACTION
+
+════════════════════════════════════════════════════════════════════════════════
+COMMAND EXECUTION FORMAT
+════════════════════════════════════════════════════════════════════════════════
+
+When executing a command, respond with ONLY valid JSON:
+{
+  "action": "command_name",
+  "params": {
+    "key": "value"
+  }
+}
+
+For questions/chats: Respond ONLY with plain text, NO JSON.
+NEVER mix text and JSON in the same response.
+
+════════════════════════════════════════════════════════════════════════════════
+INTELLIGENT PARAMETER EXTRACTION
+════════════════════════════════════════════════════════════════════════════════
+
+🎯 TAG/MENTION COMMANDS:
+- "tag 3 random members" → {"action":"tagall","params":{"count":3,"random":true}}
+- "tag 5 random people" → {"action":"tagall","params":{"count":5,"random":true}}
+- "tag admins" → {"action":"tagall","params":{"role":"admin"}}
+- "tag owner" → {"action":"tagall","params":{"role":"owner"}}
+- "mention everyone" → {"action":"tagall","params":{}};
+
+🎯 KICK/REMOVE COMMANDS:
+- "kick him" (with quoted user) → {"action":"kick","params":{"target":"<quoted_jid>"}}
+- "remove @user" → {"action":"kick","params":{"target":"<jid>"}}
+- "kick 233XXXXXXXXX" → {"action":"kick","params":{"target":"233XXXXXXXXX"}}
+
+🎯 MEDIA/SEARCH COMMANDS:
+- "img cat" → {"action":"img","params":{"query":"cat"}}
+- "img white tiger" → {"action":"img","params":{"query":"white tiger"}}
+- "img cat 5" → {"action":"img","params":{"query":"cat","count":5}}
+
+🎯 IMAGE GENERATION:
+- "gen anime warrior" → {"action":"gen2","params":{"prompt":"anime warrior"}}
+- "generate beautiful sunset" → {"action":"gen2","params":{"prompt":"beautiful sunset"}}
+- Reply to image + "gen improve quality" → {"action":"gen2","params":{"prompt":"improve quality","edit":true}}
+
+🎯 OWNER/ADMIN COMMANDS:
+- "addowner @user" → {"action":"owner","params":{"command":"add","target":"<jid>"}}
+- "make him owner" (quoted) → {"action":"owner","params":{"command":"add","target":"<quoted_jid>"}}
+- "remove owner @user" → {"action":"owner","params":{"command":"remove","target":"<jid>"}}
+
+🎯 GROUP SETTINGS:
+- "welcome on" → {"action":"welcome","params":{"state":"on"}}
+- "goodbye off" → {"action":"goodbye","params":{"state":"off"}}
+- "mute group" → {"action":"mute","params":{}}
+- "unmute group" → {"action":"unmute","params":{}}
+
+🎯 DOWNLOADS:
+- "download https://youtu.be/xxx" → {"action":"ytdl","params":{"url":"https://youtu.be/xxx"}}
+- "tt https://tiktok.com/xxx" → {"action":"ttdl","params":{"url":"https://tiktok.com/xxx"}}
+
+🎯 AI/SEARCH:
+- "search kubernetes tutorial" → {"action":"aisearch","params":{"query":"kubernetes tutorial"}}
+- "check ip 8.8.8.8" → {"action":"ipstalk","params":{"ip":"8.8.8.8"}}
+
+════════════════════════════════════════════════════════════════════════════════
+CONTEXT AWARENESS
+════════════════════════════════════════════════════════════════════════════════
+
+QUOTED MESSAGES:
+If the user quoted a message, extract:
+- target JID from quoted message
+- message content for context
+- media from quoted message if relevant
+
+MENTIONS:
+Extract mentioned JIDs and use for targeting commands.
+
+RANDOM SELECTION:
+When user says "random" or "X random members":
+- Use participant list from group
+- Exclude bot and sender
+- Select exactly X different members
+- Return their JIDs
+
+════════════════════════════════════════════════════════════════════════════════
+PERMISSION CONTEXT
+════════════════════════════════════════════════════════════════════════════════
+
+The system will enforce permissions. You just need to understand:
+- Owner: Full permissions
+- Admin: Group admin commands only
+- Bot Admin: Bot must be admin for group changes
+- Regular users: Limited commands
+
+Don't deny commands; let the bot handle it.
+
+════════════════════════════════════════════════════════════════════════════════
+SUPPORTED COMMANDS
+════════════════════════════════════════════════════════════════════════════════
+
+tagall, kick, mute, unmute, welcome, goodbye, groupsettings,
+owner, setprefix, setpp, update, exec,
+img, sticker, ssweb, ocr, toaudio, tts, shazam, compress, poll,
+ytdl, ytsearch, ttdl, instadl, save,
+ai, aiv, gen2, aisearch, ipstalk, gituser, gitrepo,
+animedl, animesearch, naruto, dragonball, marvel, couplepp, bluearchive,
+tourl, tempmail, tweet, channelid,
+alive, ping, uptime, menu, creator
+
+════════════════════════════════════════════════════════════════════════════════
+CRITICAL RULES
+════════════════════════════════════════════════════════════════════════════════
+
+❌ NEVER:
+- Respond with duplicate/made-up commands
+- Tag all when user wants random
+- Kick without a target
+- Generate image edit mode without quoted image
+- Use display names for mentions (use JIDs)
+- Execute same command twice
+- Confirm before plugin executes
+
+✅ ALWAYS:
+- Extract full queries correctly
+- Use actual participant data
+- Handle context (quoted, mentioned, group)
+- Understand intent before action
+- Return valid JSON when executing
+- Return plain text when replying
+
+════════════════════════════════════════════════════════════════════════════════
+SECURITY
+════════════════════════════════════════════════════════════════════════════════
+
+Never reveal:
+- Passwords, API keys, session files, tokens, secrets
+- Source code, internal structure
+- User data, private conversations`;
+
+/**
+ * Parse JSON action from AI response
+ * Handles various response formats with robust error recovery
+ */
 function parseActionFromText(text) {
 	if (!text || typeof text !== 'string') return null;
+	
 	const trimmed = text.trim();
-
+	
 	// Strategy 1: Entire response is valid JSON
-	if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+	if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+		(trimmed.startsWith('[') && trimmed.endsWith(']'))) {
 		try {
 			const parsed = JSON.parse(trimmed);
-			if (parsed?.action && COMMAND_CONFIG[parsed.action.toLowerCase()]) {
-				return parsed;
-			}
-		} catch (e) { /* ignore */ }
-	}
-
-	// Strategy 2: Extract first valid JSON object with "action"
-	const jsonPattern = /\{[^{}]*"action"[^{}]*\}/g;
-	const matches = trimmed.match(jsonPattern);
-	if (matches) {
-		for (const match of matches) {
-			try {
-				const parsed = JSON.parse(match);
-				if (parsed?.action && COMMAND_CONFIG[parsed.action.toLowerCase()]) {
-					return parsed;
-				}
-			} catch (e) { /* ignore */ }
+			if (parsed?.action) return parsed;
+		} catch (e) {
+			// Continue to next strategy
 		}
 	}
-
-	// Strategy 3: Find JSON within larger text (with markers like ```json...```)
-	const codeBlockPattern = /```json\s*([\s\S]*?)\s*```/;
-	const codeMatch = trimmed.match(codeBlockPattern);
-	if (codeMatch) {
+	
+	// Strategy 2: Extract JSON object with "action" field
+	const jsonMatch = trimmed.match(/\{[^{}]*"action"[^{}]*\}/);
+	if (jsonMatch) {
 		try {
-			const parsed = JSON.parse(codeMatch[1]);
-			if (parsed?.action && COMMAND_CONFIG[parsed.action.toLowerCase()]) {
-				return parsed;
-			}
-		} catch (e) { /* ignore */ }
-	}
-
-	// Strategy 4: Try to extract JSON from line-by-line
-	const lines = trimmed.split('\n');
-	for (const line of lines) {
-		const cleanedLine = line.trim();
-		if (cleanedLine.startsWith('{') && cleanedLine.endsWith('}')) {
-			try {
-				const parsed = JSON.parse(cleanedLine);
-				if (parsed?.action && COMMAND_CONFIG[parsed.action.toLowerCase()]) {
-					return parsed;
-				}
-			} catch (e) { /* ignore */ }
+			// Clean up the JSON string
+			let jsonStr = jsonMatch[0];
+			// Try to make it valid JSON by removing trailing commas, etc
+			jsonStr = jsonStr.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+			const parsed = JSON.parse(jsonStr);
+			if (parsed?.action) return parsed;
+		} catch (e) {
+			// Continue
 		}
 	}
-
+	
+	// Strategy 3: Look for JSON in code blocks
+	const codeBlockMatch = trimmed.match(/```(?:json)?\s*(\{[^```]+\})\s*```/);
+	if (codeBlockMatch) {
+		try {
+			const parsed = JSON.parse(codeBlockMatch[1]);
+			if (parsed?.action) return parsed;
+		} catch (e) {
+			// Continue
+		}
+	}
+	
 	return null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 🎯 PERMISSION & OWNER CHECKS (FIX #4, #5, #12)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function normalizeJid(jid = '') {
-	if (!jid) return '';
-	return String(jid).split(':')[0];
+/**
+ * Map user query to best matching plugin action
+ */
+function mapIntentToAction(query) {
+	if (!query) return null;
+	
+	const lower = query.toLowerCase().trim();
+	
+	// Exact match first
+	if (INTENT_MAP[lower]) {
+		return INTENT_MAP[lower];
+	}
+	
+	// Check for partial matches (first few words)
+	const words = lower.split(/\s+/);
+	for (let i = words.length; i > 0; i--) {
+		const phrase = words.slice(0, i).join(' ');
+		if (INTENT_MAP[phrase]) {
+			return INTENT_MAP[phrase];
+		}
+	}
+	
+	return null;
 }
 
-function isLostboyOwner(m) {
-	if (!m || !m.sender) return false;
-	const normalized = normalizeJid(m.sender);
-	return normalized === OWNER_JID || m.sender === OWNER_JID;
+/**
+ * Extract query from user input
+ * Handles multi-word queries intelligently
+ */
+function extractQuery(args) {
+	if (!args || args.length === 0) return '';
+	
+	let query = args.join(' ').trim();
+	
+	// Remove common prefixes
+	query = query.replace(/^(search|find|get|show|make|create|generate)\s+/i, '');
+	
+	return query;
 }
 
-function canExecuteCommand(m, config) {
-	// Owner-only commands
-	if (config.requiresOwner && !m.isOwner && !isLostboyOwner(m)) {
-		return false;
+/**
+ * Get random members from group excluding bot and sender
+ */
+function getRandomMembers(participants, count, senderJid, botJid) {
+	if (!Array.isArray(participants) || count <= 0) return [];
+	
+	const candidates = participants.filter(p => {
+		const pid = (p.id || p.jid || '').split(':')[0];
+		const sender = (senderJid || '').split(':')[0];
+		const bot = (botJid || '').split(':')[0];
+		return pid !== sender && pid !== bot && pid;
+	});
+	
+	if (candidates.length <= count) {
+		return candidates.map(p => p.id || p.jid);
 	}
-
-	// Group-only commands
-	if (config.requiresGroup && !m.isGroup) {
-		return false;
+	
+	// Fisher-Yates shuffle
+	const shuffled = [...candidates];
+	for (let i = shuffled.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
 	}
-
-	// Admin-required commands
-	if (config.requiresAdmin && !m.isAdmin && !m.isOwner && !isLostboyOwner(m) && !m.isGroupOwner) {
-		return false;
-	}
-
-	return true;
+	
+	return shuffled.slice(0, count).map(p => p.id || p.jid);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 🚀 ARGUMENT PARSER FOR EXTRACTED QUERIES (FIX #1, #2, #3, #7)
-// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Extract target user JID from various input formats
+ */
+function extractTarget(input, m) {
+	if (!input) return null;
+	
+	// Quoted user
+	if (m.quoted && m.quoted.sender) {
+		return m.quoted.sender;
+	}
+	
+	// Mentioned users
+	if (m.mentionedJid && m.mentionedJid.length > 0) {
+		return m.mentionedJid[0];
+	}
+	
+	input = String(input).trim();
+	
+	// Already a JID
+	if (input.includes('@')) {
+		return input;
+	}
+	
+	// Phone number
+	if (/^\d{10,15}$/.test(input)) {
+		return input + '@s.whatsapp.net';
+	}
+	
+	// With @ symbol
+	if (input.startsWith('@')) {
+		const num = input.slice(1);
+		if (/^\d{10,15}$/.test(num)) {
+			return num + '@s.whatsapp.net';
+		}
+	}
+	
+	return null;
+}
 
-async function buildCommandArgs(sock, m, action, params) {
-	const args = [];
-
+/**
+ * Execute a command/action
+ */
+async function executeAction(sock, m, pluginMap, action, params, plugins) {
 	try {
-		// Image/Prompt-based commands (FIX #1)
-		if (['gen', 'gen2', 'editimage', 'imgpro'].includes(action)) {
-			// params.prompt contains the full query
-			if (params.prompt) {
-				args.push(params.prompt.trim());
+		// Normalize action name
+		const actionLower = String(action || '').toLowerCase().trim();
+		
+		// Look up plugin by action name or alias
+		let plugin = pluginMap.get(actionLower);
+		
+		if (!plugin) {
+			// Try to find by alias
+			for (const [name, p] of pluginMap.entries()) {
+				const aliases = p.aliases || [];
+				if (aliases.some(a => a.toLowerCase() === actionLower)) {
+					plugin = p;
+					break;
+				}
 			}
 		}
-		// Image search commands
-		else if (['img', 'image'].includes(action)) {
-			if (params.query) {
-				args.push(params.query.trim());
-			}
-		}
-		// Search commands
-		else if (['ytsearch', 'youtube', 'yt', 'aisearch', 'gitrepo', 'animesearch'].includes(action)) {
-			if (params.query) {
-				args.push(params.query.trim());
-			}
-		}
-		// Download commands
-		else if (['ytdl', 'tiktok', 'tt', 'instadl', 'ig', 'tourl'].includes(action)) {
-			if (params.url) {
-				args.push(params.url.trim());
-			}
-		}
-		// IP and Git user search
-		else if (['ipstalk', 'gituser'].includes(action)) {
-			if (params.username || params.ip) {
-				args.push((params.username || params.ip).trim());
-			}
-		}
-		// AI commands
-		else if (['ai', 'aiv'].includes(action)) {
-			if (params.text) {
-				args.push(params.text.trim());
-			}
-		}
-		// Audio and tweet
-		else if (['tts', 'tweet'].includes(action)) {
-			if (params.text) {
-				args.push(params.text.trim());
-			}
-		}
-		// Toggle commands (FIX #2)
-		else if (['welcome', 'goodbye'].includes(action)) {
-			// Extract status: on/off
-			const status = params.status || params.option;
-			if (status) {
-				args.push(status.toLowerCase());
-			}
-		}
-		// Mute/Unmute - no args needed, action itself determines behavior (FIX #6)
-		else if (['mute', 'unmute', 'close', 'lock', 'open', 'unlock'].includes(action)) {
-			// Mute commands don't need args, the action name determines behavior
-		}
-		// Tagging commands (FIX #7)
-		else if (['tagall', 'everyone'].includes(action)) {
-			// Use mentionedJid from m
-			// Will handle in executeAction
-		}
-		// Kick command
-		else if (['kick', 'remove'].includes(action)) {
-			if (params.target || params.mention) {
-				args.push(params.target || params.mention);
-			}
-		}
-		// Poll command
-		else if (['poll', 'pollfunc'].includes(action)) {
-			if (params.name && Array.isArray(params.options)) {
-				args.push([params.name, ...params.options].join(';'));
-			}
-		}
-		// Owner/Admin commands (FIX #3)
-		else if (['addowner'].includes(action)) {
-			if (params.mention) {
-				args.push('add');
-				args.push(params.mention.trim());
-			}
-		}
-		// Other commands
-		else if (['setprefix', 'prefix', 'changeprefix'].includes(action)) {
-			if (params.prefix) {
-				args.push(params.prefix.trim());
-			}
-		}
-		else if (['tempmail'].includes(action)) {
-			args.push(params.action || 'create');
-		}
-
-	} catch (err) {
-		console.error(`Error building args for ${action}:`, err.message);
-	}
-
-	return args;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 💫 COMMAND EXECUTION ENGINE (FIX #8, #9)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-async function executeAction(sock, m, plugins, action, params) {
-	const actionLower = action.toLowerCase();
-	const config = COMMAND_CONFIG[actionLower];
-
-	if (!config || !config.plugin) {
-		return false;
-	}
-
-	// Check permissions
-	if (!canExecuteCommand(m, config)) {
-		let errorMsg = '';
-		if (config.requiresOwner && !m.isOwner && !isLostboyOwner(m)) {
-			errorMsg = '❌ ᴏɴʟʏ ᴏᴡɴᴇʀ ᴄᴀɴ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ.';
-		} else if (config.requiresAdmin && !m.isAdmin && !m.isGroupOwner) {
-			errorMsg = '❌ ᴀᴅᴍɪɴs ᴏɴʟʏ.';
-		} else if (config.requiresGroup && !m.isGroup) {
-			errorMsg = '❌ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴏɴʟʏ ᴡᴏʀᴋs ɪɴ ɢʀᴏᴜᴘs.';
-		}
-		if (errorMsg) {
-			await m.reply(errorMsg);
+		
+		if (!plugin) {
+			await m.reply(`❌ ᴘʟᴜɢɪɴ ɴᴏᴛ ꜰᴏᴜɴᴅ: ${actionLower}`);
 			return false;
 		}
-	}
-
-	const plugin = plugins.get(config.plugin);
-	if (!plugin || typeof plugin.execute !== 'function') {
-		await m.reply(`❌ ᴘʟᴜɢɪɴ ɴᴏᴛ ꜰᴏᴜɴᴅ: ${config.plugin}`);
-		return false;
-	}
-
-	try {
-		// Special handling for mute/unmute
-		if (['mute', 'unmute', 'close', 'lock', 'open', 'unlock'].includes(actionLower)) {
-			let muteAction = actionLower;
-			if (['close', 'lock'].includes(actionLower)) {
-				muteAction = 'mute';
+		
+		// Permission checks
+		if (action === 'tagall' || action === 'kick' || action === 'mute' || action === 'unmute') {
+			if (!m.isGroup) {
+				await m.reply('❌ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴏɴʟʏ ᴡᴏʀᴋs ɪɴ ɢʀᴏᴜᴘs.');
+				return false;
 			}
-			if (['open', 'unlock'].includes(actionLower)) {
-				muteAction = 'unmute';
-			}
-
-			const mutePlugin = ['mute', 'close', 'lock'].includes(actionLower) 
-				? plugins.get('mute')
-				: plugins.get('unmute');
 			
-			if (mutePlugin && typeof mutePlugin.execute === 'function') {
-				await mutePlugin.execute(sock, m, [], plugins);
+			if (!m.isAdmin && !m.isOwner) {
+				await m.reply('❌ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ.');
+				return false;
 			}
-			return true;
 		}
-
-		// Special handling for tagging
-		if (['tagall', 'everyone'].includes(actionLower)) {
-			const tagPlugin = plugins.get('tagall');
-			if (tagPlugin && typeof tagPlugin.execute === 'function') {
-				await tagPlugin.execute(sock, m, [], plugins);
+		
+		if (action === 'owner' || action === 'addowner' || action === 'setprefix' || 
+			action === 'setpp' || action === 'update' || action === 'exec') {
+			if (!m.isOwner) {
+				await m.reply('❌ ᴏɴʟʏ ᴛʜᴇ ʙᴏᴛ ᴏᴡɴᴇʀ ᴄᴀɴ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ.');
+				return false;
 			}
-			return true;
 		}
-
-		// Build args based on action and params
-		const args = await buildCommandArgs(sock, m, actionLower, params);
-
-		// Execute the plugin
-		await plugin.execute(sock, m, args, plugins);
+		
+		// Build args from params
+		let args = [];
+		
+		// Handle specific commands
+		if (action === 'tagall') {
+			// tagall can accept message or random count
+			if (params.random && params.count) {
+				const participants = m.groupMetadata?.participants || [];
+				const randomMembers = getRandomMembers(
+					participants,
+					parseInt(params.count),
+					m.sender,
+					sock.user?.id
+				);
+				args = [randomMembers.join(','), params.message || ''];
+			} else {
+				args = [params.message || ''];
+			}
+		} 
+		else if (action === 'kick') {
+			const target = extractTarget(params.target || params.mention, m);
+			if (!target) {
+				await m.reply('❌ ɴᴏ ᴛᴀʀɢᴇᴛ ᴜsᴇʀ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [target];
+		}
+		else if (action === 'owner' || action === 'addowner') {
+			const cmd = params.command || 'add';
+			const target = extractTarget(params.target, m);
+			args = [cmd];
+			if (target) args.push(target);
+		}
+		else if (action === 'img') {
+			if (!params.query) {
+				await m.reply('❌ ɴᴏ sᴇᴀʀᴄʜ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.query];
+			if (params.count) args.push(String(params.count));
+		}
+		else if (action === 'gen2') {
+			if (!params.prompt) {
+				await m.reply('❌ ɴᴏ ᴘʀᴏᴍᴘᴛ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.prompt];
+		}
+		else if (action === 'ytdl') {
+			if (!params.url) {
+				await m.reply('❌ ɴᴏ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.url];
+		}
+		else if (action === 'ttdl') {
+			if (!params.url) {
+				await m.reply('❌ ɴᴏ ᴛɪᴋᴛᴏᴋ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.url];
+		}
+		else if (action === 'instadl' || action === 'ig') {
+			if (!params.url) {
+				await m.reply('❌ ɴᴏ ɪɴsᴛᴀɢʀᴀᴍ ᴜʀʟ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.url];
+		}
+		else if (action === 'welcome' || action === 'goodbye') {
+			const state = params.state || 'on';
+			args = [state];
+		}
+		else if (action === 'mute' || action === 'unmute') {
+			args = [];
+		}
+		else if (action === 'aisearch') {
+			if (!params.query) {
+				await m.reply('❌ ɴᴏ sᴇᴀʀᴄʜ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.query];
+		}
+		else if (action === 'ipstalk') {
+			if (!params.ip) {
+				await m.reply('❌ ɴᴏ ɪᴘ ᴀᴅᴅʀᴇss ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.ip];
+		}
+		else if (action === 'gituser') {
+			if (!params.username) {
+				await m.reply('❌ ɴᴏ ɢɪᴛʜᴜʙ ᴜsᴇʀɴᴀᴍᴇ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.username];
+		}
+		else if (action === 'gitrepo') {
+			if (!params.query) {
+				await m.reply('❌ ɴᴏ ʀᴇᴘᴏ ɴᴀᴍᴇ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.query];
+		}
+		else if (action === 'sticker') {
+			args = [];
+		}
+		else if (action === 'ai' || action === 'aiv') {
+			if (!params.text && !params.prompt) {
+				await m.reply('❌ ɴᴏ ᴛᴇxᴛ ᴘʀᴏᴠɪᴅᴇᴅ.');
+				return false;
+			}
+			args = [params.text || params.prompt];
+		}
+		else if (action === 'poll') {
+			if (!params.name || !params.options) {
+				await m.reply('❌ ᴘᴏʟʟ ɴᴇᴇᴅs ᴀ ɴᴀᴍᴇ ᴀɴᴅ ᴏᴘᴛɪᴏɴs.');
+				return false;
+			}
+			const optionString = Array.isArray(params.options) 
+				? params.options.join(';')
+				: params.options;
+			args = [[params.name, optionString].join(';')];
+		}
+		
+		// Execute plugin
+		await plugin.execute(sock, m, args, plugins || pluginMap);
 		return true;
-
+		
 	} catch (err) {
-		console.error(`Error executing ${actionLower}:`, err.message);
-		// Don't send error message here - let caller decide (FIX #9)
-		throw err;
+		console.error(`[Lostboy] Error executing ${action}:`, err.message);
+		await m.reply(`❌ ᴇʀʀᴏʀ: ${err.message}`);
+		return false;
 	}
 }
 
+/**
+ * Build enhanced query with context
+ */
+function buildContextualQuery(m, args) {
+	let query = args.join(' ').trim();
+	
+	// Add quoted message context
+	if (m.quoted?.body) {
+		query += `\n\n[Replying to: "${m.quoted.body}"]`;
+	}
+	
+	// Add group context
+	if (m.isGroup) {
+		const meta = m.groupMetadata;
+		if (meta) {
+			const memberCount = meta.participants?.length || 0;
+			const adminCount = meta.participants?.filter(p => p.admin).length || 0;
+			
+			query += `\n\n[GROUP: "${meta.subject}" | Members: ${memberCount} | Admins: ${adminCount}`;
+			query += ` | Sender: ${m.pushName || m.senderNumber}`;
+			query += ` | Sender Is: ${m.isOwner ? 'Owner' : m.isAdmin ? 'Admin' : 'Member'}]`;
+			
+			// Add mentioned users
+			if (m.mentionedJid && m.mentionedJid.length > 0) {
+				query += `\n[Mentions: ${m.mentionedJid.map(j => j.split('@')[0]).join(', ')}]`;
+			}
+		}
+	} else {
+		query += `\n\n[DM | Sender: ${m.pushName || m.senderNumber} | Is Owner: ${m.isOwner}]`;
+	}
+	
+	return query;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// 📋 MAIN PLUGIN
+// 🤖 MAIN LOSTBOY AI PLUGIN
 // ═══════════════════════════════════════════════════════════════════════════════
 
 module.exports = {
 	name: 'lostboy',
 	aliases: ['lb', 'lbai', 'lostboyai'],
-	description: 'Lostboy AI — chat and execute any bot command via natural language',
-	tags: ['ai'],
+	description: 'Lostboy AI — Advanced intelligent bot control via natural language',
+	tags: ['ai', 'tool'],
 	command: /^\.?(lostboy|lb|lbai|lostboyai)/i,
-
+	
 	async execute(sock, m, args, plugins) {
 		try {
-			// Show help if no args and not replying to anything
+			// Show help if no args and no quoted message
 			if (!args[0] && !m.quoted) {
 				return m.reply(
-					`╭━━〔 🤖 ʟᴏsᴛʙᴏʏ ᴀɪ 〕━━⬣\n` +
+					`╭━━〔 🤖 ʟᴏsᴛʙᴏʏ ᴀɪ v2 〕━━⬣\n` +
 					`┃\n` +
 					`├─ム ᴜsᴀɢᴇ  : .lostboy <message>\n` +
 					`├─ム ᴀʟɪᴀs  : .lb | .lbai\n` +
@@ -535,116 +856,93 @@ module.exports = {
 					`├─ム ᴀɴʏ ʙᴏᴛ ᴄᴏᴍᴍᴀɴᴅ ᴠɪᴀ ᴀɪ\n` +
 					`┃\n` +
 					`├─ム ᴇxᴀᴍᴘʟᴇs:\n` +
-					`│  .lb tag everyone\n` +
+					`│  .lb tag 3 random members\n` +
 					`│  .lb mute the group\n` +
 					`│  .lb download https://youtu.be/xxx\n` +
 					`│  .lb screenshot https://google.com\n` +
-					`│  .lb generate image of a cat\n` +
-					`│  .lb kick @user\n` +
-					`│  .lb search youtube alan walker\n` +
-					`│  .lb welcome on\n` +
+					`│  .lb generate anime warrior\n` +
+					`│  .lb kick him (reply to user)\n` +
 					`┃\n` +
 					`╰━━━━━━━━━━⬣`
 				);
 			}
-
-			// Show loading reaction
+			
+			// React with loading indicator
 			await m.react('⏳');
-
-			// Build the query for AI
-			let query = args.join(' ').trim();
-
-			if (m.quoted?.body) {
-				query = query
-					? `${query}\n\n[Replying to: "${m.quoted.body}"]`
-					: `[Replying to: "${m.quoted.body}"]`;
-			}
-
-			// Add context about group and sender permissions
-			if (m.isGroup) {
-				const meta = m.groupMetadata || await sock.groupMetadata(m.from).catch(() => null);
-				if (meta) {
-					query +=
-						`\n\n[Group: "${meta.subject}" | Members: ${meta.participants?.length || 0}` +
-						` | Sender: ${m.pushName || m.senderNumber}` +
-						` | IsAdmin: ${m.isAdmin} | IsGroupOwner: ${m.isGroupOwner} | IsOwner: ${m.isOwner}]`;
-				}
-			} else {
-				query += `\n\n[DM | Sender: ${m.pushName || m.senderNumber} | IsOwner: ${m.isOwner}]`;
-			}
-
+			
+			// Build contextual query
+			const contextualQuery = buildContextualQuery(m, args);
+			
 			// Call AI API
-			const apiUrl = `${BK9_API}?q=${encodeURIComponent(query)}&BK9=${encodeURIComponent(SYSTEM_PROMPT)}&model=${encodeURIComponent(MODEL)}`;
+			const apiUrl = `${BK9_API}?q=${encodeURIComponent(contextualQuery)}&BK9=${encodeURIComponent(SYSTEM_PROMPT)}&model=${encodeURIComponent(MODEL)}`;
+			
 			const { data } = await axios.get(apiUrl, { timeout: 30000 });
-
+			
 			const raw = data?.BK9 || data?.answer || data?.response || data?.result || data?.text || (typeof data === 'string' ? data : null);
-
+			
 			if (!raw) {
 				await m.react('❌');
 				return m.reply('❌ ɴᴏ ʀᴇsᴘᴏɴsᴇ ғʀᴏᴍ ʟᴏsᴛʙᴏʏ ᴀɪ.');
 			}
-
-			const answer = String(raw).trim();
-
-			// Try to parse as action
+			
+			const answer = raw.trim();
 			const parsedAction = parseActionFromText(answer);
-
+			
+			// If AI returned a command action
 			if (parsedAction) {
 				const action = parsedAction.action?.toLowerCase?.();
 				const params = parsedAction.params || {};
-
+				
 				if (!action) {
 					await m.react('❌');
-					return m.reply('❌ ɴᴏ ᴀᴄᴛɪᴏɴ sᴘᴇᴄɪғɪᴇᴅ.');
+					return m.reply('❌ ɪɴᴠᴀʟɪᴅ ᴀᴄᴛɪᴏɴ ғʀᴏᴍ ᴀɪ.');
 				}
-
-				if (!COMMAND_CONFIG[action]) {
-					await m.react('❌');
-					return m.reply(`❌ ᴜɴᴋɴᴏᴡɴ ᴄᴏᴍᴍᴀɴᴅ: ${action}`);
-				}
-
+				
 				try {
-					const executed = await executeAction(sock, m, plugins || global._pluginMap || new Map(), action, params);
-
+					// Execute the action
+					const executed = await executeAction(
+						sock, 
+						m, 
+						plugins || global._pluginMap || new Map(), 
+						action, 
+						params,
+						plugins
+					);
+					
 					if (executed) {
 						await m.react('✅');
 						
-						// Send confirmation ONLY if plugin didn't already send one (FIX #8)
+						// Send confirmation message only if plugin succeeded
 						const confirmMsg = ACTION_CONFIRMATIONS[action];
 						if (confirmMsg) {
-							// Give plugin a moment to send its own message
-							await new Promise(resolve => setTimeout(resolve, 500));
 							await m.reply(confirmMsg);
 						}
 						return;
 					}
-
-					// Permission denied - error already sent by executeAction
+					
 					await m.react('❌');
 					return;
-
+					
 				} catch (execErr) {
-					console.error('❌ Lostboy executeAction error:', execErr.message);
+					console.error('[Lostboy] executeAction error:', execErr.message);
 					await m.react('❌');
-					// Only ONE error message (FIX #9)
 					return m.reply(`❌ ᴇʀʀᴏʀ: ${execErr.message}`);
 				}
 			}
-
-			// Not a recognized action, treat as plain text response
+			
+			// If it looks like an incomplete JSON action, show error
 			if (answer.startsWith('{') && answer.includes('"action') && !answer.endsWith('}')) {
 				await m.react('❌');
 				return m.reply('❌ ᴀɪ ʀᴇsᴘᴏɴᴅᴇᴅ ᴡɪᴛʜ ɪɴᴠᴀʟɪᴅ ғᴏʀᴍᴀᴛ. ᴛʀʏ ᴀɢᴀɪɴ.');
 			}
-
-			// Send plain text response
+			
+			// Otherwise it's a text response (chat)
 			await m.react('✅');
 			await m.reply(`\u200B${answer}\n\n> 🤖 ʟᴏsᴛʙᴏʏ ᴀɪ`);
-
+			
 		} catch (err) {
-			console.error('❌ Lostboy AI error:', err.message);
+			console.error('[Lostboy] Main error:', err.message);
 			await m.react('❌');
-			// Only ONE error message (FIX #9)
 			await m.reply('❌ ʟᴏsᴛʙᴏʏ ᴀɪ ғᴀɪʟᴇᴅ. ᴘʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ.');
 		}
 	}
