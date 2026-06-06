@@ -54,10 +54,10 @@ const COMMAND_CONFIG = {
 	// Group Management (require admin or owner)
 	'tagall': { plugin: 'tagall', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
 	'kick': { plugin: 'kick', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'mute': { plugin: 'mute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'unmute': { plugin: 'unmute', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'welcome': { plugin: 'welcome', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
-	'goodbye': { plugin: 'goodbye', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'mute': { plugin: 'groupsettings', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'unmute': { plugin: 'groupsettings', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
+	'welcome': { plugin: 'welcome', requiresGroup: true, requiresAdmin: false, requiresOwner: false },
+	'goodbye': { plugin: 'goodbye', requiresGroup: true, requiresAdmin: false, requiresOwner: false },
 	'group': { plugin: 'groupsettings', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
 	'gsettings': { plugin: 'groupsettings', requiresGroup: true, requiresAdmin: true, requiresOwner: false },
 	'autodetect': { plugin: 'autoreact', requiresGroup: true, requiresAdmin: false, requiresOwner: false },
@@ -269,23 +269,20 @@ async function executeAction(sock, m, plugins, action, params) {
 		return false;
 	}
 
-	// Check if sender is owner (using local owner check)
-	const isSenderOwner = isOwnerUser(m.sender);
-
 	// Check group requirement
 	if (config.requiresGroup && !m.isGroup) {
 		await m.reply('❌ ɢʀᴏᴜᴘs ᴏɴʟʏ.');
 		return false;
 	}
 
-	// Check admin requirement (must be admin OR owner) - PROPER ADMIN CHECK
-	if (config.requiresAdmin && !isSenderOwner && !m.isAdmin) {
+	// Check admin requirement (must be admin OR owner) - uses handler.js checks
+	if (config.requiresAdmin && !m.isOwner && !m.isAdmin) {
 		await m.reply('❌ ᴀᴅᴍɪɴs ᴏɴʟʏ.');
 		return false;
 	}
 
-	// Check owner requirement
-	if (config.requiresOwner && !isSenderOwner) {
+	// Check owner requirement - uses handler.js check
+	if (config.requiresOwner && !m.isOwner) {
 		await m.reply('❌ ᴏᴡɴᴇʀ ᴏɴʟʏ.');
 		return false;
 	}
