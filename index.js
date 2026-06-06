@@ -324,10 +324,11 @@ function startBot() {
                     const args = m.body.slice(global.BOT_PREFIX.length).trim().split(/\s+/);
                     const commandName = args.shift().toLowerCase();
                     const plugin = plugins.get(commandName);
+                    global._pluginMap = plugins;
                     
                     if (plugin) {
                         try { 
-                            await plugin.execute(sock, m, args); 
+                            await plugin.execute(sock, m, args, plugins); 
                         } catch (err) { 
                             console.error(`❌ Plugin error (${commandName}):`, err); 
                             await m.reply('❌ Error running command.'); 
