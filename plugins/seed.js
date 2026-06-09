@@ -58,18 +58,14 @@ module.exports = {
             try {
                 // Prepare the request payload
                 const payload = {
-                    image: imageUrl,
-                    model: 'seedream-50' // Specify the model version from the endpoint
+                    image: imageUrl
                 };
 
                 // Send to the API endpoint
                 const response = await axios({
                     method: 'POST',
-                    url: 'https://apis.davidcyril.name.ng/endpoints/imageToImage/',
+                    url: 'https://apis.davidcyril.name.ng/imageToImage/seedream',
                     data: payload,
-                    params: {
-                        endpoint: 'seedream-50'
-                    },
                     headers: {
                         'Content-Type': 'application/json',
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
