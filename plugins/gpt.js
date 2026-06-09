@@ -12,6 +12,7 @@ module.exports = {
         try {
             let imageUrl = null;
 
+            // Check if there's a quoted image
             if (m.quoted && m.quoted.type === 'imageMessage') {
                 try {
                     const quotedImage = await m.quoted.download();
@@ -25,6 +26,7 @@ module.exports = {
             else if (args[0] && args[0].startsWith('http')) {
                 imageUrl = args[0];
             }
+            // Check for image in current message
             else if (m.type === 'imageMessage') {
                 try {
                     const image = await m.download();
