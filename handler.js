@@ -6,6 +6,7 @@
  */
 
 const { downloadMediaMessage } = require('@whiskeysockets/baileys')
+const lostboyHub = require('./lostboyhub-integration.js');
 
 function normalizeJid(jid = '') {
     return String(jid).split(':')[0]
@@ -188,29 +189,63 @@ async function serializeMessage(sock, msg) {
         message: msg.message,
         mentionedJid: msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [],
         reply: async (content, options = {}) => {
+            let messageText = '';
             if (typeof content === 'string') {
-                return await sock.sendMessage(from, { text: content, ...options }, { quoted: msg })
+                messageText = content;
+                const result = await sock.sendMessage(from, { text: content, ...options }, { quoted: msg });
+                // Log outgoing message to LostboyHub
+                if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
+                    lostboyHub.logOutgoingMessage(from, messageText, 'text');
+                }
+                return result;
             }
             else if (Buffer.isBuffer(content)) {
-                return await sock.sendMessage(from, { image: content, ...options }, { quoted: msg })
+                messageText = '[Image]';
+                const result = await sock.sendMessage(from, { image: content, ...options }, { quoted: msg });
+                if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
+                    lostboyHub.logOutgoingMessage(from, messageText, 'image');
+                }
+                return result;
             }
             else if (typeof content === 'object') {
-                return await sock.sendMessage(from, content, { quoted: msg })
+                messageText = '[Object/Complex Message]';
+                const result = await sock.sendMessage(from, content, { quoted: msg });
+                if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
+                    lostboyHub.logOutgoingMessage(from, messageText, 'object');
+                }
+                return result;
             }
             else {
-                return await sock.sendMessage(from, { text: String(content), ...options }, { quoted: msg })
+                messageText = String(content);
+                const result = await sock.sendMessage(from, { text: messageText, ...options }, { quoted: msg });
+                if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
+                    lostboyHub.logOutgoingMessage(from, messageText, 'text');
+                }
+                return result;
             }
         },
-        send: async (content, options = {}) =>
-            await sock.sendMessage(
+        send: async (content, options = {}) => {
+            const messageText = typeof content === 'string' ? content : '[Complex Message]';
+            const result = await sock.sendMessage(
                 from,
                 typeof content === 'string'
                     ? { text: content, ...options }
                     : content,
                 { quoted: msg }
-            ),
-        react: async emoji =>
-            await sock.sendMessage(from, { react: { text: emoji, key: msg.key } }),
+            );
+            // Log outgoing message to LostboyHub
+            if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
+                lostboyHub.logOutgoingMessage(from, messageText, typeof content === 'string' ? 'text' : 'object');
+            }
+            return result;
+        },
+        react: async emoji => {
+            const result = await sock.sendMessage(from, { react: { text: emoji, key: msg.key } });
+            if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
+                lostboyHub.logOutgoingMessage(from, `[Reaction: ${emoji}]`, 'reaction');
+            }
+            return result;
+        },
         forward: async (jid, force = false) =>
             await sock.sendMessage(jid, { forward: msg, force }),
         download: async () =>
