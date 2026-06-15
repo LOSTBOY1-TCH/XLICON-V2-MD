@@ -8,6 +8,7 @@ const QRCode = require('qrcode');
 const { Boom } = require('@hapi/boom');
 const { sendButtons, sendInteractiveMessage } = require('gifted-btns');
 const serializeMessage = require('./handler.js');
+const lostboyHub = require('./lostboyhub-integration.js');
 const JimpImport = require('jimp');
 
 const Jimp =
@@ -162,6 +163,19 @@ function startBot() {
                         }
                     });
 
+                    // Initialize LostboyHub integration
+                    if (global.LOSTBOY_ENABLED && !lostboyHub.connected) {
+                        lostboyHub.init().then(() => {
+                            lostboyHub.logStatus('bot_connected', {
+                                botName: sock.user?.name,
+                                botNumber: sock.user?.id,
+                                platform: 'WhatsApp'
+                            });
+                        }).catch(err => {
+                            console.error('Failed to initialize LostboyHub:', err);
+                        });
+                    }
+
                     presenceInterval = setInterval(() => {
                         if (sock?.ws?.readyState === 1) {
                             sock.sendPresenceUpdate('available');
@@ -309,6 +323,15 @@ function startBot() {
 
                 const m = await serializeMessage(sock, rawMsg);
 
+                // Log incoming message to LostboyHub
+                if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
+                    lostboyHub.logIncomingMessage(
+                        m.sender,
+                        m.body || `[${m.type}]`,
+                        m.type || 'text'
+                    );
+                }
+
                 for (const plugin of plugins.values()) {
                     if (typeof plugin.onMessage === 'function') {
                         try { 
@@ -327,11 +350,21 @@ function startBot() {
                     global._pluginMap = plugins;
                     
                     if (plugin) {
+                        // Log command execution to LostboyHub
+                        if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
+                            lostboyHub.logCommand(commandName, m.sender, args);
+                        }
+
                         try { 
                             await plugin.execute(sock, m, args, plugins); 
                         } catch (err) { 
                             console.error(`❌ Plugin error (${commandName}):`, err); 
-                            await m.reply('❌ Error running command.'); 
+                            await m.reply('❌ Error running command.');
+                            
+                            // Log error to LostboyHub
+                            if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
+                                lostboyHub.logError(err, `Plugin: ${commandName}`);
+                            }
                         }
                     }
                 }
