@@ -8,7 +8,6 @@ const QRCode = require('qrcode');
 const { Boom } = require('@hapi/boom');
 const { sendButtons, sendInteractiveMessage } = require('gifted-btns');
 const serializeMessage = require('./handler.js');
-const lostboyHub = require('./lostboyhub-integration.js');
 const JimpImport = require('jimp');
 
 const Jimp =
@@ -163,19 +162,6 @@ function startBot() {
                         }
                     });
 
-                    // Initialize LostboyHub integration
-                    if (global.LOSTBOY_ENABLED && !lostboyHub.connected) {
-                        lostboyHub.init().then(() => {
-                            lostboyHub.logStatus('bot_connected', {
-                                botName: sock.user?.name,
-                                botNumber: sock.user?.id,
-                                platform: 'WhatsApp'
-                            });
-                        }).catch(err => {
-                            console.error('Failed to initialize LostboyHub:', err);
-                        });
-                    }
-
                     presenceInterval = setInterval(() => {
                         if (sock?.ws?.readyState === 1) {
                             sock.sendPresenceUpdate('available');
@@ -232,543 +218,116 @@ function startBot() {
             } else {
                 console.log('📁 No plugins folder found');
             }
-
-            global.antiDeleteStore = global.antiDeleteStore || {};
-            global.antiLinkStore = global.antiLinkStore || {};
-            global.messageCache = global.messageCache || {};
-            global.autoStatusView = global.autoStatusView || false;
-            global.autoStatusLike = global.autoStatusLike || false;
-
-            sock.ev.on('messages.upsert', async ({ messages, type }) => {
-                if (type !== 'notify' && type !== 'append') return;
-                
-                const CHANNEL_ID = "120363230794474148@newsletter";
-                
-                for (const rawMsg of messages) {
-                    if (rawMsg.key?.remoteJid === CHANNEL_ID && rawMsg.key?.server_id) {
-                        const emojis = ["❤️", "💛", "👍", "💜", "😮", "🤍", "💙", "🔥", "💯", "⚡"];
-                        const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-                        
-                        try {
-                          
-                            await sock.newsletterReactMessage(
-                                CHANNEL_ID, 
-                                rawMsg.key.server_id.toString(), 
-                                emoji
-                            );
-                            console.log(`✅ Channel reaction: ${emoji} to message ${rawMsg.key.server_id}`);
-                        } catch (err) {
-                            console.log("❌ Channel React Error:", err.message);
-                        }
-                        continue;
-                    }
-                }
-                
-                for (const rawMsg of messages) {
-                    if (rawMsg.key.remoteJid === 'status@broadcast' && rawMsg.key.participant) {
-                        if (global.autoStatusView || global.autoStatusLike) {
-                            try {
-                                const statusSender = rawMsg.key.participant;
-                                
-                                if (global.autoStatusView) {
-                                    try {
-                                        await sock.readMessages([rawMsg.key]);
-                                        console.log(`✅ Auto-viewed status from ${statusSender}`);
-                                    } catch (err) {
-                                        console.log(`⚠️ Failed to view status:`, err.message);
-                                    }
-                                }
-                                
-                                if (global.autoStatusLike) {
-                                    try {
-                                        const emojis = ['❤️', '🔥', '😍', '💯', '⚡', '✨', '🤍', '🫶', '😎', '🌟'];
-                                        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-                                        
-                                        await sock.sendMessage(statusSender, { 
-                                            react: { 
-                                                text: randomEmoji, 
-                                                key: rawMsg.key 
-                                            } 
-                                        });
-                                        console.log(`✅ Auto-reacted to status from ${statusSender} with ${randomEmoji}`);
-                                    } catch (err) {
-                                        console.log(`⚠️ Failed to react to status:`, err.message);
-                                    }
-                                }
-                            } catch (err) {
-                                console.log(`⚠️ Status auto-action error:`, err.message);
-                            }
-                        }
-                        continue;
-                    }
-                }
-
-                const rawMsg = messages[0];
-                if (!rawMsg.message) return;
-
-                const chatId = rawMsg.key.remoteJid;
-                const messageId = rawMsg.key.id;
-
-                if (!global.messageCache[chatId]) {
-                    global.messageCache[chatId] = {};
-                }
-
-                global.messageCache[chatId][messageId] = {
-                    key: rawMsg.key,
-                    message: rawMsg.message,
-                    messageTimestamp: rawMsg.messageTimestamp,
-                    pushName: rawMsg.pushName,
-                    timestamp: Date.now()
-                };
-
-                const m = await serializeMessage(sock, rawMsg);
-
-                // Log incoming message to LostboyHub
-                if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
-                    lostboyHub.logIncomingMessage(
-                        m.sender,
-                        m.body || `[${m.type}]`,
-                        m.type || 'text'
-                    );
-                }
-
-                for (const plugin of plugins.values()) {
-                    if (typeof plugin.onMessage === 'function') {
-                        try { 
-                            const blocked = await plugin.onMessage(sock, m);
-                            if (blocked === true) return;
-                        } catch (err) { 
-                            console.error(`❌ onMessage error (${plugin.name}):`, err); 
-                        }
-                    }
-                }
-
-                if (m.body && m.body.startsWith(global.BOT_PREFIX)) {
-                    const args = m.body.slice(global.BOT_PREFIX.length).trim().split(/\s+/);
-                    const commandName = args.shift().toLowerCase();
-                    const plugin = plugins.get(commandName);
-                    global._pluginMap = plugins;
-                    
-                    if (plugin) {
-                        // Log command execution to LostboyHub
-                        if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
-                            lostboyHub.logCommand(commandName, m.sender, args);
-                        }
-
-                        try { 
-                            await plugin.execute(sock, m, args, plugins); 
-                        } catch (err) { 
-                            console.error(`❌ Plugin error (${commandName}):`, err); 
-                            await m.reply('❌ Error running command.');
-                            
-                            // Log error to LostboyHub
-                            if (global.LOSTBOY_ENABLED && lostboyHub.connected) {
-                                lostboyHub.logError(err, `Plugin: ${commandName}`);
-                            }
-                        }
-                    }
-                }
-            });
-
-            sock.ev.on('messages.update', async (updates) => {
-                try {
-                    for (const update of updates) {
-                        const { key, update: msgUpdate } = update;
-                        const chatId = key.remoteJid;
-                        const messageId = key.id;
-
-                        if (!global.messageCache[chatId] || !global.messageCache[chatId][messageId]) {
-                            continue;
-                        }
-
-                        if (msgUpdate?.status === 1 || msgUpdate?.pollUpdates) {
-                            continue;
-                        }
-
-                        if (msgUpdate?.message === null || msgUpdate?.message === undefined) {
-                            if (!global.antiDeleteStore[chatId] || !global.antiDeleteStore[chatId].enabled) {
-                                continue;
-                            }
-
-                            const cachedMsg = global.messageCache[chatId][messageId];
-                            if (!cachedMsg) {
-                                continue;
-                            }
-
-                            try {
-                                await handleDeletedMessage(sock, chatId, cachedMsg, messageId);
-                            } catch (err) {
-                                console.error('Antidelete recovery error:', err);
-                            }
-
-                            delete global.messageCache[chatId][messageId];
-                        }
-                    }
-                } catch (err) {
-                    console.error('Messages update handler error:', err);
-                }
-            });
-
-            async function handleDeletedMessage(sock, chatId, cachedMsg, messageId) {
-                try {
-                    const msgType = Object.keys(cachedMsg.message || {})[0];
-                    const senderJid = cachedMsg.key?.participant || cachedMsg.key?.remoteJid;
-                    const senderNumber = senderJid?.split('@')[0] || 'Unknown';
-
-                    let contentCard = `┌─ム ᴀɴᴛɪ ᴅᴇʟᴇᴛᴇ\n│\n│ ᪣ ᴜsᴇʀ: @${senderNumber}\n│ ᪣ ᴛʏᴘᴇ: ${msgType?.replace('Message', '').toLowerCase() || 'unknown'}\n`;
-
-                    switch (msgType) {
-                        case 'conversation':
-                        case 'extendedTextMessage': {
-                            const text = cachedMsg.message.conversation || cachedMsg.message.extendedTextMessage?.text || '';
-                            contentCard += `│\n│ ᪣ ᴍᴇssᴀɢᴇ:\n│ ${text}\n`;
-                            contentCard += `│\n╰─────────◆────────╯`;
-                            await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                            break;
-                        }
-
-                        case 'imageMessage': {
-                            const caption = cachedMsg.message.imageMessage?.caption || '';
-                            contentCard += `│\n│ ᪣ ᴄᴀᴘᴛɪᴏɴ:\n│ ${caption || '(No caption)'}\n`;
-                            contentCard += `│\n╰─────────◆────────╯`;
-                            
-                            try {
-                                const buffer = await downloadMediaMessage(
-                                    { key: cachedMsg.key, message: cachedMsg.message },
-                                    'buffer',
-                                    {},
-                                    sock
-                                );
-                                
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                
-                                await sock.sendMessage(chatId, {
-                                    image: buffer,
-                                    caption: caption,
-                                    mimetype: cachedMsg.message.imageMessage?.mimetype || 'image/jpeg'
-                                });
-                            } catch (err) {
-                                contentCard += `\n│ ⚠️ Failed to recover image`;
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                            }
-                            break;
-                        }
-
-                        case 'videoMessage': {
-                            const caption = cachedMsg.message.videoMessage?.caption || '';
-                            contentCard += `│\n│ ᪣ ᴄᴀᴘᴛɪᴏɴ:\n│ ${caption || '(No caption)'}\n`;
-                            contentCard += `│\n╰─────────◆────────╯`;
-                            
-                            try {
-                                const buffer = await downloadMediaMessage(
-                                    { key: cachedMsg.key, message: cachedMsg.message },
-                                    'buffer',
-                                    {},
-                                    sock
-                                );
-                                
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                
-                                await sock.sendMessage(chatId, {
-                                    video: buffer,
-                                    caption: caption,
-                                    mimetype: cachedMsg.message.videoMessage?.mimetype || 'video/mp4'
-                                });
-                            } catch (err) {
-                                contentCard += `\n│ ⚠️ Failed to recover video`;
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                            }
-                            break;
-                        }
-
-                        case 'stickerMessage': {
-                            contentCard += `│\n╰─────────◆────────╯`;
-                            
-                            try {
-                                const buffer = await downloadMediaMessage(
-                                    { key: cachedMsg.key, message: cachedMsg.message },
-                                    'buffer',
-                                    {},
-                                    sock
-                                );
-                                
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                
-                                await sock.sendMessage(chatId, {
-                                    sticker: buffer,
-                                    mimetype: cachedMsg.message.stickerMessage?.mimetype || 'image/webp'
-                                });
-                            } catch (err) {
-                                contentCard += `\n│ ⚠️ Failed to recover sticker`;
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                            }
-                            break;
-                        }
-
-                        case 'audioMessage': {
-                            contentCard += `│\n╰─────────◆────────╯`;
-                            
-                            try {
-                                const buffer = await downloadMediaMessage(
-                                    { key: cachedMsg.key, message: cachedMsg.message },
-                                    'buffer',
-                                    {},
-                                    sock
-                                );
-                                
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                
-                                const ptt = cachedMsg.message.audioMessage?.ptt || false;
-                                await sock.sendMessage(chatId, {
-                                    audio: buffer,
-                                    ptt: ptt,
-                                    mimetype: cachedMsg.message.audioMessage?.mimetype || 'audio/ogg; codecs=opus'
-                                });
-                            } catch (err) {
-                                contentCard += `\n│ ⚠️ Failed to recover audio`;
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                            }
-                            break;
-                        }
-
-                        case 'documentMessage': {
-                            const fileName = cachedMsg.message.documentMessage?.fileName || 'document';
-                            contentCard += `│\n│ ᪣ ғɪʟᴇ: ${fileName}\n`;
-                            contentCard += `│\n╰─────────◆────────╯`;
-                            
-                            try {
-                                const buffer = await downloadMediaMessage(
-                                    { key: cachedMsg.key, message: cachedMsg.message },
-                                    'buffer',
-                                    {},
-                                    sock
-                                );
-                                
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                
-                                await sock.sendMessage(chatId, {
-                                    document: buffer,
-                                    mimetype: cachedMsg.message.documentMessage?.mimetype || 'application/octet-stream',
-                                    fileName: fileName
-                                });
-                            } catch (err) {
-                                contentCard += `\n│ ⚠️ Failed to recover document`;
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                            }
-                            break;
-                        }
-
-                        case 'gifMessage': {
-                            const caption = cachedMsg.message.gifMessage?.caption || '';
-                            contentCard += `│\n│ ᪣ ᴄᴀᴘᴛɪᴏɴ:\n│ ${caption || '(No caption)'}\n`;
-                            contentCard += `│\n╰─────────◆────────╯`;
-                            
-                            try {
-                                const buffer = await downloadMediaMessage(
-                                    { key: cachedMsg.key, message: cachedMsg.message },
-                                    'buffer',
-                                    {},
-                                    sock
-                                );
-                                
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                
-                                await sock.sendMessage(chatId, {
-                                    video: buffer,
-                                    gifPlayback: true,
-                                    caption: caption,
-                                    mimetype: cachedMsg.message.gifMessage?.mimetype || 'video/mp4'
-                                });
-                            } catch (err) {
-                                contentCard += `\n│ ⚠️ Failed to recover gif`;
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                            }
-                            break;
-                        }
-
-                        case 'viewOnceMessage': {
-                            const viewOnceMsg = cachedMsg.message.viewOnceMessage?.message;
-                            const viewOnceMsgType = Object.keys(viewOnceMsg || {})[0];
-
-                            if (viewOnceMsgType === 'imageMessage') {
-                                const caption = viewOnceMsg.imageMessage?.caption || '';
-                                contentCard += `│\n│ ᪣ ᴠɪᴇᴡ ᴏɴᴄᴇ ɪᴍᴀɢᴇ\n`;
-                                contentCard += `│ ᪣ ᴄᴀᴘᴛɪᴏɴ:\n│ ${caption || '(No caption)'}\n`;
-                                contentCard += `│\n╰─────────◆────────╯`;
-                                
-                                try {
-                                    const buffer = await downloadMediaMessage(
-                                        { key: cachedMsg.key, message: viewOnceMsg },
-                                        'buffer',
-                                        {},
-                                        sock
-                                    );
-                                    
-                                    await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                    
-                                    await sock.sendMessage(chatId, {
-                                        image: buffer,
-                                        caption: caption,
-                                        mimetype: viewOnceMsg.imageMessage?.mimetype || 'image/jpeg'
-                                    });
-                                } catch (err) {
-                                    contentCard += `\n│ ⚠️ Failed to recover view-once image`;
-                                    await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                }
-                            } else if (viewOnceMsgType === 'videoMessage') {
-                                const caption = viewOnceMsg.videoMessage?.caption || '';
-                                contentCard += `│\n│ ᪣ ᴠɪᴇᴡ ᴏɴᴄᴇ ᴠɪᴅᴇᴏ\n`;
-                                contentCard += `│ ᪣ ᴄᴀᴘᴛɪᴏɴ:\n│ ${caption || '(No caption)'}\n`;
-                                contentCard += `│\n╰─────────◆────────╯`;
-                                
-                                try {
-                                    const buffer = await downloadMediaMessage(
-                                        { key: cachedMsg.key, message: viewOnceMsg },
-                                        'buffer',
-                                        {},
-                                        sock
-                                    );
-                                    
-                                    await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                    
-                                    await sock.sendMessage(chatId, {
-                                        video: buffer,
-                                        caption: caption,
-                                        mimetype: viewOnceMsg.videoMessage?.mimetype || 'video/mp4'
-                                    });
-                                } catch (err) {
-                                    contentCard += `\n│ ⚠️ Failed to recover view-once video`;
-                                    await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                                }
-                            } else {
-                                contentCard += `│\n│ ᪣ ᴠɪᴇᴡ ᴏɴᴄᴇ ᴍᴇssᴀɢᴇ\n`;
-                                contentCard += `│\n╰─────────◆────────╯`;
-                                await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                            }
-                            break;
-                        }
-
-                        default: {
-                            contentCard += `│\n│ ᪣ ᴜɴsᴜᴘᴘᴏʀᴛᴇᴅ ᴍᴇssᴀɢᴇ ᴛʏᴘᴇ\n`;
-                            contentCard += `│\n╰─────────◆────────╯`;
-                            await sock.sendMessage(chatId, { text: contentCard }, { quoted: { key: cachedMsg.key, message: cachedMsg.message } });
-                        }
-                    }
-
-                } catch (err) {
-                    console.error('Error handling deleted message:', err);
-                }
+           
+     sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify' && type !== 'append') return;
+    
+    const CHANNEL_ID = "120363230794474148@newsletter";
+    
+    for (const rawMsg of messages) {
+        if (rawMsg.key?.remoteJid === CHANNEL_ID && rawMsg.key?.server_id) {
+            const emojis = ["❤️", "💛", "👍", "💜", "😮", "🤍", "💙", "🔥", "💯", "⚡"];
+            const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+            
+            try {
+              
+                await sock.newsletterReactMessage(
+                    CHANNEL_ID, 
+                    rawMsg.key.server_id.toString(), 
+                    emoji
+                );
+                console.log(`✅ Channel reaction: ${emoji} to message ${rawMsg.key.server_id}`);
+            } catch (err) {
+                console.log("❌ Channel React Error:", err.message);
             }
+            continue;
+        }
+    }
+    
+    for (const rawMsg of messages) {
+        if (rawMsg.key.remoteJid === 'status@broadcast' && rawMsg.key.participant) {
+            try {
+                console.log(`📱 Status detected from: ${rawMsg.key.participant}`);
+                await sock.readMessages([rawMsg.key]);
+                continue;
+            } catch (err) {
+                console.log('❌ Status viewer error:', err.message);
+            }
+        }
+    }
 
+    const rawMsg = messages[0];
+    if (!rawMsg.message) return;
+
+    const m = await serializeMessage(sock, rawMsg);
+
+    for (const plugin of plugins.values()) {
+        if (typeof plugin.onMessage === 'function') {
+            try { 
+                const blocked = await plugin.onMessage(sock, m);
+                if (blocked === true) return;
+            } catch (err) { 
+                console.error(`❌ onMessage error (${plugin.name}):`, err); 
+            }
+        }
+    }
+
+    if (m.body && m.body.startsWith(global.BOT_PREFIX)) {
+        const args = m.body.slice(global.BOT_PREFIX.length).trim().split(/\s+/);
+        const commandName = args.shift().toLowerCase();
+        const plugin = plugins.get(commandName);
+        
+        if (plugin) {
+            try { 
+                await plugin.execute(sock, m, args); 
+            } catch (err) { 
+                console.error(`❌ Plugin error (${commandName}):`, err); 
+                await m.reply('❌ Error running command.'); 
+            }
+        }
+    }
+});
             sock.ev.on('group-participants.update', async (update) => {
                 try {
-                    const groupId = update.id;
-                    const action = update.action;
+                    if (!global.welcomeConfig?.enabled) return
 
-                    const SETTINGS_FILE = path.join(__dirname, 'data/groupSettings.json');
-
-                    function readGroupSettings(gid) {
-                        try {
-                            if (!fs.existsSync(SETTINGS_FILE)) return { welcome: false, goodbye: false };
-                            const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-                            return data[gid] || { welcome: false, goodbye: false };
-                        } catch {
-                            return { welcome: false, goodbye: false };
-                        }
-                    }
-
-                    const settings = readGroupSettings(groupId);
-
-                    if (action !== 'add' && action !== 'remove') return;
-                    if (action === 'add' && !settings.welcome) return;
-                    if (action === 'remove' && !settings.goodbye) return;
-
-                    let groupMeta;
-                    try {
-                        groupMeta = await sock.groupMetadata(groupId);
-                    } catch {
-                        groupMeta = null;
-                    }
-
-                    const groupName = groupMeta?.subject || 'Group';
-                    const memberCount = groupMeta?.participants?.length ?? 0;
-
-                    const FALLBACK_IMAGE = 'https://i.ibb.co/6bqXHgj/fallback.jpg';
-
-                    let ppBuffer = null;
-                    try {
-                        const ppUrl = await sock.profilePictureUrl(groupId, 'image');
-                        const axios = require('axios');
-                        const resp = await axios.get(ppUrl, { responseType: 'arraybuffer', timeout: 8000 });
-                        ppBuffer = Buffer.from(resp.data);
-                    } catch {
-                        try {
-                            const axios = require('axios');
-                            const resp = await axios.get(FALLBACK_IMAGE, { responseType: 'arraybuffer', timeout: 8000 });
-                            ppBuffer = Buffer.from(resp.data);
-                        } catch {
-                            ppBuffer = null;
-                        }
-                    }
+                    const groupId = update.id
 
                     for (const participant of update.participants) {
+
                         const userId = typeof participant === 'string'
                             ? participant
-                            : (participant.id || participant.phoneNumber || '');
+                            : participant.phoneNumber || participant.id
 
-                        if (!userId) continue;
-                        if (action === 'add' && userId === sock.user.id) continue;
+                        if (!userId) continue
 
-                        const userNumber = userId.split('@')[0];
+                        const memberName = userId.split('@')[0]
 
-                        let caption;
+                        if (update.action === 'add') {
 
-                        if (action === 'add') {
-                            caption =
-                                `╭━━〔 👋 ᴡᴇʟᴄᴏᴍᴇ 〕━━⬣\n` +
-                                `┃\n` +
-                                `├─ム ᴜsᴇʀ : @${userNumber}\n` +
-                                `├─ム ɢʀᴏᴜᴘ : ${groupName}\n` +
-                                `├─ム ᴍᴇᴍʙᴇʀs : ${memberCount}\n` +
-                                `┃\n` +
-                                `├─ム ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴏᴜʀ ɢʀᴏᴜᴘ\n` +
-                                `├─ム ᴘʟᴇᴀsᴇ ʀᴇᴀᴅ ᴛʜᴇ ʀᴜʟᴇs\n` +
-                                `┃\n` +
-                                `╰━━━━━━━━━━⬣`;
-                        } else {
-                            caption =
-                                `╭━━〔 👋 ɢᴏᴏᴅʙʏᴇ 〕━━⬣\n` +
-                                `┃\n` +
-                                `├─ム ᴜsᴇʀ : @${userNumber}\n` +
-                                `├─ム ɢʀᴏᴜᴘ : ${groupName}\n` +
-                                `├─ム ᴍᴇᴍʙᴇʀs : ${memberCount}\n` +
-                                `┃\n` +
-                                `├─ム ɪ'ᴍ ᴠᴇʀʏ ɢʟᴀᴅ ᴛᴏ sᴇᴇ ʏᴏᴜ ʟᴇᴀᴠᴇ ☺️\n` +
-                                `├─ム ɢᴏᴏᴅ ʟᴜᴄᴋ ᴏɴ ʏᴏᴜʀ ᴊᴏᴜʀɴᴇʏ\n` +
-                                `┃\n` +
-                                `╰━━━━━━━━━━⬣`;
-                        }
+                            if (userId === sock.user.id) continue
 
-                        try {
-                            if (ppBuffer) {
-                                await sock.sendMessage(groupId, {
-                                    image: ppBuffer,
-                                    caption: caption,
-                                    mentions: [userId]
-                                });
-                            } else {
-                                await sock.sendMessage(groupId, {
-                                    text: caption,
-                                    mentions: [userId]
-                                });
-                            }
-                        } catch (err) {
-                            console.error(`❌ Failed to send ${action === 'add' ? 'welcome' : 'goodbye'} message:`, err.message);
+                            const text = `👋 Welcome @${memberName}!\n🎉 Glad to have you in this group!`
+
+                            await sock.sendMessage(groupId, {
+                                text,
+                                mentions: [userId]
+                            })
+
+                        } else if (update.action === 'remove') {
+
+                            const text = `ya @${memberName} has left the group.\nWe are not gonna miss you!`
+
+                            await sock.sendMessage(groupId, {
+                                text,
+                                mentions: [userId]
+                            })
+
                         }
                     }
 
                 } catch (err) {
-                    console.error('❌ group-participants.update error:', err);
+                    console.error('❌ group-participants.update error:', err)
                 }
             })
 
@@ -793,201 +352,520 @@ const server = http.createServer((req, res) => {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🤖 Xlicon WhatsApp Bot</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>WhatsApp Bot | Multi-Feature Bot</title>
+  <link rel="preconnect" href="https:
+  <link rel="preconnect" href="https:
+  <link href="https:
+  <link rel="stylesheet" href="https:
   <style>
+    :root {
+      --ink: #172033;
+      --muted: #6b7280;
+      --line: #d9e1ea;
+      --panel: rgba(255, 255, 255, 0.86);
+      --green: #16a34a;
+      --cyan: #0891b2;
+      --amber: #f59e0b;
+      --purple: #8b5cf6;
+      --shadow: 0 24px 70px rgba(20, 35, 58, 0.18);
+    }
+
     * {
+      box-sizing: border-box;
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
     }
-    
+
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       min-height: 100vh;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at top left, rgba(34, 197, 94, 0.12), transparent 18rem),
+                  linear-gradient(180deg, #f8fafc, #eef6f1);
+      display: grid;
+      place-items: center;
+      padding: max(16px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    }
+
+    .app {
+      width: min(560px, 100%);
+      min-height: min(800px, calc(100vh - 32px));
       display: flex;
-      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.92);
+      border-radius: 32px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .topbar {
+      display: flex;
       align-items: center;
-      padding: 20px;
+      justify-content: space-between;
+      gap: 14px;
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      margin: -14px -14px 0;
+      padding: max(14px, env(safe-area-inset-top)) 14px 12px;
+      background: rgba(248, 250, 252, 0.88);
+      border-bottom: 1px solid rgba(217, 225, 234, 0.76);
+      backdrop-filter: blur(16px);
     }
-    
-    .container {
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--ink);
+      font-weight: 900;
+      font-size: 1.08rem;
+    }
+
+    .brand i {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: linear-gradient(135deg, var(--green), var(--cyan));
+      border-radius: 12px;
+      font-size: 1.3rem;
+    }
+
+    .status-pill {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 100px;
       background: white;
-      border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      max-width: 500px;
-      width: 100%;
-      padding: 40px;
-      text-align: center;
+      color: var(--ink);
+      font-size: 0.78rem;
+      font-weight: 800;
+      white-space: nowrap;
     }
-    
-    h1 {
-      color: #667eea;
-      margin-bottom: 10px;
-      font-size: 2.5em;
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #94a3b8;
     }
-    
-    .status {
-      margin: 20px 0;
-      padding: 15px;
-      background: #f0f0f0;
-      border-radius: 10px;
-      font-size: 1.1em;
+
+    .status-dot.disconnected { background: #ef4444; box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.1); animation: pulse 1.2s infinite alternate; }
+    .status-dot.connecting { background: var(--amber); box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.2); animation: pulse 1.2s infinite alternate; }
+    .status-dot.connected { background: #22c55e; box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.18); animation: pulse 0.9s infinite alternate; }
+
+    @keyframes pulse {
+      from { transform: scale(0.92); opacity: 0.72; }
+      to { transform: scale(1.1); opacity: 1; }
     }
-    
-    .status.connected {
-      background: #d4edda;
-      color: #155724;
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--panel);
+      overflow: hidden;
+      box-shadow: 0 10px 28px rgba(20, 35, 58, 0.08);
     }
-    
-    .status.connecting {
-      background: #fff3cd;
-      color: #856404;
+
+    .panel-head {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
     }
-    
-    .status.disconnected {
-      background: #f8d7da;
-      color: #721c24;
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 900;
     }
-    
+
+    .panel-title i {
+      color: var(--green);
+    }
+
+    .tag {
+      padding: 7px 9px;
+      border-radius: 40px;
+      background: #ecfeff;
+      color: #0e7490;
+      font-weight: 900;
+      font-size: 0.7rem;
+      white-space: nowrap;
+    }
+
     .qr-container {
-      margin: 30px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 24px;
+      background: linear-gradient(90deg, rgba(15, 23, 42, 0.02) 1px, transparent 1px),
+                  linear-gradient(rgba(15, 23, 42, 0.02) 1px, transparent 1px),
+                  #ffffff;
+      background-size: 28px 28px;
     }
-    
-    .qr-container img {
-      max-width: 100%;
-      border-radius: 10px;
-      border: 2px solid #667eea;
+
+    .qr-wrapper {
+      background: white;
+      padding: 16px;
+      border-radius: 24px;
+      box-shadow: 0 16px 38px rgba(15, 23, 42, 0.12);
+      border: 1px solid #e5e7eb;
     }
-    
+
+    .qr-img {
+      width: min(58vw, 260px);
+      height: auto;
+      display: block;
+      border-radius: 16px;
+    }
+
+    .qr-placeholder {
+      width: min(58vw, 260px);
+      text-align: center;
+      padding: 40px 20px;
+      background: #f8fafc;
+      border-radius: 24px;
+      border: 2px dashed #cbd5e1;
+    }
+
+    .qr-placeholder i {
+      font-size: 3rem;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+
+    .qr-placeholder p {
+      color: #64748b;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .info-text {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: #f1f5f9;
+      border-radius: 60px;
+      color: #475569;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .pairing-form {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .pairing-form label {
+      color: #475569;
+      font-size: 0.78rem;
+      font-weight: 800;
+      margin-bottom: -4px;
+    }
+
+    .pairing-input {
+      width: 100%;
+      min-height: 50px;
+      border: 1.5px solid var(--line);
+      border-radius: 16px;
+      background: white;
+      color: var(--ink);
+      padding: 0 18px;
+      font-weight: 600;
+      outline: none;
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+
+    .pairing-input:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+    }
+
+    .btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .btn {
+      min-height: 52px;
+      border: none;
+      border-radius: 60px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 0.9rem;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--green), var(--cyan));
+      color: white;
+      box-shadow: 0 8px 20px rgba(22, 163, 74, 0.25);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      filter: brightness(1.04);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    .btn-secondary {
+      background: #f1f5f9;
+      color: #334155;
+      border: 1px solid var(--line);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #e2e8f0;
+    }
+
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .pairing-code-box {
+      background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+      border-radius: 20px;
+      padding: 20px;
+      text-align: center;
+      margin-top: 12px;
+    }
+
+    .pairing-code-box span {
+      font-size: clamp(2rem, 10vw, 3rem);
+      font-weight: 900;
+      letter-spacing: 4px;
+      color: #14532d;
+      font-family: monospace;
+    }
+
+    .pairing-code-box small {
+      display: block;
+      margin-top: 10px;
+      color: #475569;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .loader-text {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 16px;
+      border-top: 1px solid var(--line);
+      color: #334155;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
     .spinner {
-      display: inline-block;
       width: 20px;
       height: 20px;
-      border: 3px solid #f3f3f3;
-      border-top: 3px solid #667eea;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-right: 10px;
+      border: 3px solid rgba(22, 163, 74, 0.22);
+      border-top-color: var(--green);
+      border-radius: 999px;
+      animation: spin 0.8s linear infinite;
     }
-    
+
     @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+      to { transform: rotate(360deg); }
     }
-    
-    button {
-      background: #667eea;
-      color: white;
-      border: none;
-      padding: 12px 30px;
-      font-size: 1em;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: all 0.3s;
-      margin: 10px;
+
+    .footer-note {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px;
+      color: #64748b;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-align: center;
     }
-    
-    button:hover {
-      background: #764ba2;
-      transform: translateY(-2px);
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+
+    .footer-note i {
+      color: var(--green);
     }
-    
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    
-    input {
-      padding: 10px 15px;
-      margin: 10px;
-      border: 2px solid #ddd;
-      border-radius: 8px;
-      font-size: 1em;
-      width: calc(100% - 40px);
-      transition: all 0.3s;
-    }
-    
-    input:focus {
-      outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 10px rgba(102, 126, 234, 0.1);
-    }
-    
-    .info {
-      background: #e7f3ff;
-      border-left: 4px solid #667eea;
-      padding: 15px;
-      margin: 20px 0;
-      border-radius: 5px;
-      text-align: left;
-    }
-    
-    .info p {
-      margin: 5px 0;
-      color: #333;
+
+    @media (max-width: 620px) {
+      body {
+        padding: 0;
+      }
+      .app {
+        width: 100%;
+        min-height: 100vh;
+        border-radius: 0;
+        border: none;
+      }
+      .brand span {
+        display: none;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🤖 Xlicon Bot</h1>
-    <p style="color: #666; margin-bottom: 20px;">WhatsApp Bot Manager</p>
-    
-    <div class="status" id="status">
-      <span class="spinner"></span>
-      <span id="statusText">Checking status...</span>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <i class="fab fa-whatsapp"></i>
+        <span>WhatsApp Bot</span>
+      </div>
+      <div class="status-pill">
+        <span class="status-dot disconnected" id="statusDot"></span>
+        <span id="statusLabel">Disconnected</span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <i class="fas fa-qrcode"></i> QR Login
+        </div>
+        <div class="tag">
+          <i class="fas fa-mobile-alt"></i> WhatsApp Web
+        </div>
+      </div>
+      <div id="qrArea" class="qr-container">
+        <div class="qr-placeholder" id="qrPlaceholder">
+          <i class="fas fa-spinner fa-pulse"></i>
+          <p>Loading QR code...</p>
+        </div>
+      </div>
+      <div id="statusText" class="loader-text">
+        <i class="fas fa-circle-info"></i>
+        <span>Waiting for connection...</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <i class="fas fa-key"></i> Pair with Code
+        </div>
+        <div class="tag">Alternative</div>
+      </div>
+      <div class="pairing-form">
+        <label>📱 Phone Number (with country code)</label>
+        <input type="tel" id="phoneNumber" class="pairing-input" placeholder="233533763772" autocomplete="off">
+        <button id="pairBtn" class="btn btn-primary">
+          <i class="fas fa-link"></i> Get Pairing Code
+        </button>
+      </div>
+      <div id="pairingCodeDisplay" style="display: none;" class="pairing-code-box">
+        <i class="fas fa-key" style="color: var(--green); font-size: 1.2rem;"></i>
+        <div>
+          <span id="pairingCode"></span>
+        </div>
+        <small>Enter this code in WhatsApp > Linked Devices > Link with phone number</small>
+      </div>
+    </section>
+
+    <div class="footer-note">
+      <i class="fas fa-shield-alt"></i>
+      <span>Session stored securely | Auto-reconnect enabled</span>
     </div>
-    
-    <div id="qrContainer" class="qr-container"></div>
-    
-    <div class="info">
-      <p><strong>📝 Prefix:</strong> <span id="prefix">.</span></p>
-      <p><strong>⏰ Uptime:</strong> <span id="uptime">--:--:--</span></p>
-      <p><strong>👑 Owners:</strong> <span id="owners">0</span></p>
-    </div>
-    
-    <button onclick="location.href='/pair'">🔗 Pair with Phone</button>
-    <button onclick="location.reload()">🔄 Refresh</button>
-  </div>
+  </main>
 
   <script>
-    let refreshInterval;
+    let refreshInterval = null;
     let currentQR = null;
 
-    function updateQR(qrDataUrl) {
-      const container = document.getElementById('qrContainer');
-      if (qrDataUrl && qrDataUrl !== currentQR) {
-        currentQR = qrDataUrl;
-        container.innerHTML = '<img src="' + qrDataUrl + '" alt="QR Code">';
-      } else if (!qrDataUrl) {
-        container.innerHTML = '';
-        currentQR = null;
+    function setStatus(status) {
+      const statusElem = document.getElementById('statusLabel');
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+      
+      let statusLabel = '';
+      let dotClass = 'disconnected';
+      let loaderHtml = '';
+      
+      switch(status) {
+        case 'disconnected':
+          statusLabel = 'Disconnected';
+          dotClass = 'disconnected';
+          loaderHtml = '<i class="fas fa-circle-info"></i><span>Bot disconnected. Waiting for reconnection...</span>';
+          break;
+        case 'connecting':
+          statusLabel = 'Connecting';
+          dotClass = 'connecting';
+          loaderHtml = '<span class="spinner"></span><span>Connecting to WhatsApp...</span>';
+          break;
+        case 'connected':
+          statusLabel = 'Connected';
+          dotClass = 'connected';
+          loaderHtml = '<i class="fas fa-check-circle" style="color: #22c55e;"></i><span>Bot is online and ready!</span>';
+          break;
+        default:
+          statusLabel = status;
+          dotClass = 'disconnected';
       }
+      
+      statusElem.innerText = statusLabel;
+      statusDot.className = 'status-dot ' + dotClass;
+      if (statusText) statusText.innerHTML = loaderHtml;
     }
 
-    function setStatus(status) {
-      const statusDiv = document.getElementById('status');
-      const statusText = document.getElementById('statusText');
-      const statusClass = status === 'connected' ? 'connected' : status === 'connecting' ? 'connecting' : 'disconnected';
-      
-      statusDiv.className = 'status ' + statusClass;
-      
-      if (status === 'connected') {
-        statusText.textContent = '✅ Connected';
-      } else if (status === 'connecting') {
-        statusText.innerHTML = '<span class="spinner"></span><span>Connecting...</span>';
+    function updateQR(qrData) {
+      const qrArea = document.getElementById('qrArea');
+      if (qrData) {
+        currentQR = qrData;
+        qrArea.innerHTML = \`
+          <div class="qr-wrapper">
+            <img class="qr-img" src="\${qrData}" alt="QR Code">
+          </div>
+          <div class="info-text">
+            <i class="fas fa-camera"></i>
+            <span>Scan with WhatsApp > Linked Devices</span>
+          </div>
+        \`;
       } else {
-        statusText.textContent = '❌ Disconnected';
+        qrArea.innerHTML = \`
+          <div class="qr-placeholder">
+            <i class="fas fa-qrcode"></i>
+            <p>QR code will appear here when ready</p>
+          </div>
+        \`;
       }
     }
 
     function updatePairingCode(code) {
-      if (code) {
-        const container = document.getElementById('qrContainer');
-        container.innerHTML = '<div style="background: #fff3cd; padding: 15px; border-radius: 10px; border: 2px solid #ffc107;"><strong>Pairing Code:</strong><br><span style="font-size: 2em; color: #ff6b6b; font-weight: bold;">' + code + '</span></div>';
+      const displayDiv = document.getElementById('pairingCodeDisplay');
+      const codeSpan = document.getElementById('pairingCode');
+      if (code && code !== 'null' && code !== 'undefined') {
+        codeSpan.innerText = code;
+        displayDiv.style.display = 'block';
+      } else {
+        displayDiv.style.display = 'none';
       }
     }
 
@@ -1010,13 +888,6 @@ const server = http.createServer((req, res) => {
         if (data.status === 'connected') {
           updateQR(null);
         }
-        
-        document.getElementById('prefix').textContent = data.prefix || '.';
-        const uptime = Math.floor(data.uptime);
-        const hours = Math.floor(uptime / 3600);
-        const minutes = Math.floor((uptime % 3600) / 60);
-        const seconds = uptime % 60;
-        document.getElementById('uptime').textContent = hours + ':' + minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
       } catch (err) {
         console.error('Status poll error:', err);
       }
@@ -1065,15 +936,9 @@ const server = http.createServer((req, res) => {
       }
     }
     
-    document.addEventListener('DOMContentLoaded', () => {
-      if (document.getElementById('pairBtn')) {
-        document.getElementById('pairBtn').addEventListener('click', requestPairingCode);
-      }
-      if (document.getElementById('phoneNumber')) {
-        document.getElementById('phoneNumber').addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') requestPairingCode();
-        });
-      }
+    document.getElementById('pairBtn').addEventListener('click', requestPairingCode);
+    document.getElementById('phoneNumber').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') requestPairingCode();
     });
     
     refreshInterval = setInterval(fetchStatus, 2000);
