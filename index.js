@@ -201,37 +201,49 @@ async function startSession(sessionId) {
       }
 
       for (const rawMsg of messages) {
-        if (rawMsg.key.remoteJid === 'status@broadcast' && rawMsg.key.participant) {
-          try { await sock.readMessages([rawMsg.key]); } catch (_) {}
+        const jid = rawMsg.key?.remoteJid || '';
+
+        // skip status broadcasts
+        if (jid === 'status@broadcast') {
+          if (rawMsg.key.participant) {
+            try { await sock.readMessages([rawMsg.key]); } catch (_) {}
+          }
           continue;
         }
-      }
 
-      const rawMsg = messages[0];
-      if (!rawMsg.message) return;
+        // skip messages the bot itself sent
+        if (rawMsg.key?.fromMe) continue;
 
-      const m = await serializeMessage(sock, rawMsg);
+        // skip empty messages
+        if (!rawMsg.message) continue;
 
-      for (const plugin of plugins.values()) {
-        if (typeof plugin.onMessage === 'function') {
-          try {
-            const blocked = await plugin.onMessage(sock, m);
-            if (blocked === true) return;
-          } catch (e) {
-            console.error(`❌ onMessage (${plugin.name}):`, e);
+        const m = await serializeMessage(sock, rawMsg);
+
+        // run onMessage hooks
+        let blocked = false;
+        for (const plugin of plugins.values()) {
+          if (typeof plugin.onMessage === 'function') {
+            try {
+              const result = await plugin.onMessage(sock, m);
+              if (result === true) { blocked = true; break; }
+            } catch (e) {
+              console.error(`❌ onMessage (${plugin.name}):`, e);
+            }
           }
         }
-      }
+        if (blocked) continue;
 
-      if (m.body && m.body.startsWith(global.BOT_PREFIX)) {
-        const args = m.body.slice(global.BOT_PREFIX.length).trim().split(/\s+/);
-        const commandName = args.shift().toLowerCase();
-        const plugin = plugins.get(commandName);
-        if (plugin) {
-          try { await plugin.execute(sock, m, args); }
-          catch (e) {
-            console.error(`❌ Plugin (${commandName}):`, e);
-            await m.reply('❌ Error running command.');
+        // run commands
+        if (m.body && m.body.startsWith(global.BOT_PREFIX)) {
+          const args = m.body.slice(global.BOT_PREFIX.length).trim().split(/\s+/);
+          const commandName = args.shift().toLowerCase();
+          const plugin = plugins.get(commandName);
+          if (plugin) {
+            try { await plugin.execute(sock, m, args); }
+            catch (e) {
+              console.error(`❌ Plugin (${commandName}):`, e);
+              await m.reply('❌ Error running command.');
+            }
           }
         }
       }
