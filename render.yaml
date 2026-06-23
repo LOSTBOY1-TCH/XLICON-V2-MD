@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: xlicon-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_ID
+        value: xlicon
+      # Set your PORT, BOT_PREFIX, and any API keys in the Render dashboard
+    disk:
+      name: sessions
+      mountPath: /opt/render/project/src/sessions
+      sizeGB: 1

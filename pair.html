@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>XLICON — Connect Your WhatsApp</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+    :root{
+      --bg:#07101f;
+      --surface:#0d1a2d;
+      --card:#111f33;
+      --border:#1a2e47;
+      --border2:#243d57;
+      --green:#25d366;
+      --green-d:#16a34a;
+      --green-glow:rgba(37,211,102,0.15);
+      --cyan:#0ea5e9;
+      --text:#dde7f5;
+      --muted:#5a738f;
+      --muted2:#3d5570;
+      --amber:#f59e0b;
+      --red:#ef4444;
+    }
+
+    html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'Space Grotesk',system-ui,sans-serif}
+
+    body{
+      display:flex;flex-direction:column;align-items:center;
+      padding:32px 16px max(32px,env(safe-area-inset-bottom));
+      background-image:
+        radial-gradient(ellipse 80% 40% at 50% -10%, rgba(37,211,102,0.06) 0%, transparent 70%),
+        linear-gradient(rgba(37,211,102,0.025) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(37,211,102,0.025) 1px,transparent 1px);
+      background-size:100% 100%,48px 48px,48px 48px;
+    }
+
+    .wrap{width:min(500px,100%);display:flex;flex-direction:column;gap:20px}
+
+    /* header */
+    .header{text-align:center;padding:4px 0 8px}
+    .wa-mark{
+      display:inline-flex;align-items:center;justify-content:center;
+      width:72px;height:72px;border-radius:22px;margin-bottom:20px;
+      background:linear-gradient(145deg,#1ebe57,#128C7E);
+      box-shadow:0 0 48px rgba(37,211,102,0.25);
+    }
+    .wa-mark svg{width:38px;height:38px;fill:#fff}
+    .header h1{font-size:1.7rem;font-weight:700;letter-spacing:-0.025em;line-height:1.15}
+    .header h1 em{font-style:normal;color:var(--green)}
+    .header p{margin-top:10px;color:var(--muted);font-size:0.88rem;line-height:1.6;max-width:360px;margin-inline:auto}
+
+    /* session badge */
+    .session-badge{
+      display:flex;align-items:center;gap:8px;
+      padding:9px 14px;background:var(--surface);
+      border:1px solid var(--border);border-radius:40px;
+      font-size:0.76rem;font-weight:600;color:var(--muted);
+    }
+    .session-badge span{font-family:'JetBrains Mono',monospace;color:var(--cyan);letter-spacing:.05em}
+
+    /* status bar */
+    .status-bar{
+      display:flex;align-items:center;gap:10px;
+      padding:11px 16px;background:var(--surface);
+      border:1px solid var(--border);border-radius:40px;
+      font-size:0.82rem;font-weight:600;
+    }
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--muted2);flex-shrink:0;transition:background .3s,box-shadow .3s}
+    .dot.connecting{background:var(--amber);box-shadow:0 0 0 4px rgba(245,158,11,.2);animation:pulse 1.1s infinite alternate}
+    .dot.connected{background:var(--green);box-shadow:0 0 0 4px rgba(37,211,102,.2);animation:pulse 1.4s infinite alternate}
+    .dot.error{background:var(--red);box-shadow:0 0 0 4px rgba(239,68,68,.15)}
+    @keyframes pulse{from{opacity:.55}to{opacity:1}}
+    #statusText{flex:1;color:var(--text)}
+
+    /* tabs */
+    .tabs{
+      display:grid;grid-template-columns:1fr 1fr;
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:16px;padding:4px;gap:4px;
+    }
+    .tab{
+      padding:11px;text-align:center;border-radius:12px;
+      font-size:0.87rem;font-weight:600;cursor:pointer;
+      color:var(--muted);border:none;background:none;
+      display:flex;align-items:center;justify-content:center;gap:8px;
+      transition:background .18s,color .18s;
+    }
+    .tab svg{width:16px;height:16px;flex-shrink:0;opacity:.7}
+    .tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+    .tab.active svg{opacity:1}
+
+    /* card */
+    .card{background:var(--card);border:1px solid var(--border);border-radius:24px;overflow:hidden}
+    .card-body{padding:24px}
+
+    /* panels */
+    .panel{display:none}
+    .panel.show{display:block}
+
+    /* already paired */
+    .paired-notice{
+      text-align:center;padding:32px 24px;
+      display:none;flex-direction:column;align-items:center;gap:14px;
+    }
+    .paired-notice.show{display:flex}
+    .paired-notice .big-check{
+      width:64px;height:64px;border-radius:50%;
+      background:rgba(37,211,102,.12);border:1px solid rgba(37,211,102,.3);
+      display:flex;align-items:center;justify-content:center;
+    }
+    .paired-notice .big-check svg{width:28px;height:28px;stroke:var(--green);stroke-width:2.5;fill:none}
+    .paired-notice h3{font-size:1.1rem;font-weight:700}
+    .paired-notice p{font-size:0.84rem;color:var(--muted);line-height:1.6;max-width:280px}
+    .btn-new{
+      margin-top:4px;padding:10px 22px;background:var(--surface);
+      border:1px solid var(--border);border-radius:40px;
+      color:var(--text);font-size:0.83rem;font-weight:600;cursor:pointer;
+      transition:border-color .18s,color .18s;
+    }
+    .btn-new:hover{border-color:var(--green);color:var(--green)}
+
+    /* QR */
+    .qr-area{display:flex;flex-direction:column;align-items:center;gap:18px;padding:8px 0 4px}
+    .qr-frame{
+      width:240px;height:240px;border-radius:18px;
+      background:var(--surface);border:1px solid var(--border);
+      display:flex;align-items:center;justify-content:center;
+      position:relative;overflow:hidden;
+    }
+    .qr-frame img{width:220px;height:220px;border-radius:12px;display:block;object-fit:contain}
+    .qr-placeholder{
+      display:flex;flex-direction:column;align-items:center;gap:10px;
+      color:var(--muted);font-size:0.82rem;text-align:center;padding:16px;
+    }
+    .qr-placeholder svg{width:40px;height:40px;stroke:var(--muted2);fill:none;stroke-width:1.5}
+    .qr-expire{font-size:0.76rem;color:var(--muted);text-align:center}
+    .qr-steps{
+      width:100%;background:var(--surface);border:1px solid var(--border);
+      border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;
+    }
+    .qr-step{display:flex;gap:10px;align-items:flex-start;font-size:0.82rem;color:var(--muted);line-height:1.5}
+    .qr-step-num{
+      width:20px;height:20px;border-radius:50%;background:var(--border2);
+      display:flex;align-items:center;justify-content:center;
+      font-size:0.68rem;font-weight:700;color:var(--text);flex-shrink:0;margin-top:1px;
+    }
+
+    /* code panel */
+    .field-label{display:block;font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+    .input-row{position:relative}
+    .input-row .pfx{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:0.9rem;color:var(--muted);pointer-events:none;font-weight:600}
+    input[type=tel]{
+      width:100%;height:52px;background:var(--surface);border:1.5px solid var(--border);
+      border-radius:14px;color:var(--text);font-family:'Space Grotesk',sans-serif;
+      font-size:1rem;font-weight:500;padding:0 16px 0 48px;outline:none;
+      transition:border-color .2s,box-shadow .2s;-webkit-appearance:none;
+    }
+    input[type=tel]::placeholder{color:var(--muted2)}
+    input[type=tel]:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-glow)}
+    input[type=tel].err{border-color:var(--red);box-shadow:0 0 0 3px rgba(239,68,68,.1)}
+    .hint{font-size:0.76rem;color:var(--muted);margin-top:7px;min-height:18px}
+    .hint.err{color:#f87171}
+
+    .btn-main{
+      width:100%;height:52px;margin-top:16px;border:none;border-radius:14px;
+      background:linear-gradient(135deg,var(--green-d),#0891b2);
+      color:#fff;font-family:'Space Grotesk',sans-serif;font-size:0.97rem;font-weight:700;
+      cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;
+      transition:filter .18s,transform .12s;box-shadow:0 6px 20px rgba(22,163,74,.25);
+    }
+    .btn-main:hover:not(:disabled){filter:brightness(1.08);transform:translateY(-1px)}
+    .btn-main:active:not(:disabled){transform:scale(.98)}
+    .btn-main:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+    .spinner{width:17px;height:17px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* init spinner overlay */
+    .init-overlay{
+      position:fixed;inset:0;background:var(--bg);z-index:999;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+      color:var(--muted);font-size:0.88rem;
+    }
+    .init-overlay .big-spin{
+      width:40px;height:40px;border:3px solid var(--border2);border-top-color:var(--green);
+      border-radius:50%;animation:spin .8s linear infinite;
+    }
+    .init-overlay.hidden{display:none}
+
+    /* code reveal */
+    .code-reveal{
+      display:none;margin-top:20px;
+      background:rgba(37,211,102,.06);border:1px solid rgba(37,211,102,.2);
+      border-radius:18px;padding:22px;text-align:center;
+      animation:slideUp .35s ease;
+    }
+    .code-reveal.show{display:block}
+    @keyframes slideUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    .code-eyebrow{font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--green);margin-bottom:10px}
+    .code-digits{
+      font-family:'JetBrains Mono',monospace;font-size:clamp(2rem,9vw,2.6rem);font-weight:700;
+      letter-spacing:5px;color:var(--text);cursor:pointer;user-select:all;
+    }
+    .copy-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px}
+    .copy-btn{
+      display:inline-flex;align-items:center;gap:5px;
+      padding:5px 12px;background:var(--surface);border:1px solid var(--border);
+      border-radius:20px;font-size:0.73rem;font-weight:600;color:var(--muted);
+      cursor:pointer;transition:color .15s,border-color .15s;
+    }
+    .copy-btn:hover{color:var(--green);border-color:var(--green)}
+    .copy-btn svg{width:13px;height:13px;flex-shrink:0}
+    .code-guide{margin-top:14px;font-size:0.79rem;color:var(--muted);line-height:1.6}
+    .code-guide strong{color:var(--text)}
+    .code-timer{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:0.73rem;color:var(--muted)}
+    .code-timer svg{width:13px;height:13px;flex-shrink:0}
+
+    /* success */
+    .success-banner{
+      display:none;margin-top:20px;align-items:center;gap:10px;
+      padding:14px 18px;background:rgba(37,211,102,.08);
+      border:1px solid rgba(37,211,102,.22);border-radius:14px;
+      font-size:0.86rem;font-weight:600;color:var(--green);
+      animation:slideUp .4s ease;
+    }
+    .success-banner.show{display:flex}
+    .success-banner svg{width:18px;height:18px;flex-shrink:0;stroke:var(--green);fill:none;stroke-width:2.5}
+
+    .foot{text-align:center;font-size:0.72rem;color:var(--muted);padding-bottom:4px}
+
+    @media(max-width:460px){
+      body{padding:20px 12px}
+      .card-body{padding:18px 14px}
+    }
+    @keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+  </style>
+</head>
+<body>
+
+<!-- init overlay -->
+<div class="init-overlay" id="initOverlay">
+  <div class="big-spin"></div>
+  <span>Starting your session…</span>
+</div>
+
+<div class="wrap" id="mainWrap" style="display:none">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="wa-mark">
+      <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+    </div>
+    <h1>Connect to <em>XLICON</em></h1>
+    <p>Link your WhatsApp to the bot. Pick QR scan or pairing code — whichever works for you.</p>
+  </header>
+
+  <!-- Status -->
+  <div class="status-bar">
+    <div class="dot connecting" id="dot"></div>
+    <span id="statusText">Starting session…</span>
+  </div>
+
+  <!-- Already paired -->
+  <div class="card" id="pairedCard" style="display:none">
+    <div class="paired-notice show">
+      <div class="big-check">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <h3>Bot is connected ✓</h3>
+      <p>Your WhatsApp is linked and the bot is live. Pair again only if you switch devices or log out.</p>
+      <button class="btn-new" id="newSessionBtn">Start a new session</button>
+    </div>
+  </div>
+
+  <!-- Pairing UI -->
+  <div id="pairingUI">
+
+    <div class="tabs">
+      <button class="tab active" id="tabQR" onclick="switchTab('qr')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/>
+          <path d="M14 14h.01M17 14h3M14 17v3M17 17h.01M20 17v.01M20 20h.01"/>
+        </svg>
+        Scan QR
+      </button>
+      <button class="tab" id="tabCode" onclick="switchTab('code')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+        </svg>
+        Pairing Code
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+
+        <!-- QR Panel -->
+        <div class="panel show" id="panelQR">
+          <div class="qr-area">
+            <div class="qr-frame" id="qrFrame">
+              <div class="qr-placeholder" id="qrPlaceholder">
+                <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zM16 4h4v4h-4zM4 16h4v4H4zM16 16h4v4h-4z"/><path d="M8 4h4M4 8v4M16 12h4M12 16v4M12 4v4M20 12v4"/></svg>
+                <span>Loading QR code…</span>
+              </div>
+            </div>
+            <p class="qr-expire" id="qrExpire" style="display:none">QR refreshes every 30 seconds — keep this page open</p>
+            <div class="qr-steps">
+              <div class="qr-step"><div class="qr-step-num">1</div><span>Open WhatsApp on your phone</span></div>
+              <div class="qr-step"><div class="qr-step-num">2</div><span>Go to <strong style="color:var(--text)">Settings → Linked Devices → Link a Device</strong></span></div>
+              <div class="qr-step"><div class="qr-step-num">3</div><span>Point your camera at the QR code</span></div>
+            </div>
+            <div class="success-banner" id="qrSuccess">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Bot connected! You're all set.
+            </div>
+          </div>
+        </div>
+
+        <!-- Code Panel -->
+        <div class="panel" id="panelCode">
+          <label class="field-label" for="phoneInput">Your phone number</label>
+          <div class="input-row">
+            <span class="pfx">+</span>
+            <input type="tel" id="phoneInput" placeholder="233XXXXXXXXX" autocomplete="tel" inputmode="numeric">
+          </div>
+          <p class="hint" id="inputHint">Country code first — e.g. 233 for Ghana, 234 for Nigeria, 27 for South Africa</p>
+
+          <button class="btn-main" id="pairBtn">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/>
+            </svg>
+            Send me a pairing code
+          </button>
+
+          <div class="code-reveal" id="codeReveal">
+            <div class="code-eyebrow">Your pairing code</div>
+            <div class="code-digits" id="codeDigits" title="Tap to copy"></div>
+            <div class="copy-row">
+              <button class="copy-btn" id="copyBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                <span id="copyLabel">Tap to copy</span>
+              </button>
+            </div>
+            <div class="code-timer" id="codeTimer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span id="timerText">Code valid for 60s</span>
+            </div>
+            <div class="code-guide">
+              Open <strong>WhatsApp → Settings → Linked Devices → Link a Device</strong>,
+              tap <strong>"Use phone number instead"</strong> and enter the code above.
+            </div>
+          </div>
+
+          <div class="success-banner" id="codeSuccess">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Bot connected! You're all set.
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">XLICON WhatsApp Bot · Each visitor gets their own session · Sessions run independently</div>
+</div>
+
+<script>
+  /* ── state ──────────────────────────── */
+  let botStatus       = null;
+  let hasPaired       = false;
+  let currentCode     = null;
+  let codeExpireTimer = null;
+  let pollTimer       = null;
+  let activeTab       = 'qr';
+  let lastQR          = null;
+
+  /* ── dom refs ───────────────────────── */
+  const initOverlay   = document.getElementById('initOverlay');
+  const mainWrap      = document.getElementById('mainWrap');
+  const dot           = document.getElementById('dot');
+  const statusText    = document.getElementById('statusText');
+  const pairedCard    = document.getElementById('pairedCard');
+  const pairingUI     = document.getElementById('pairingUI');
+  const qrFrame       = document.getElementById('qrFrame');
+  const qrPlaceholder = document.getElementById('qrPlaceholder');
+  const qrExpire      = document.getElementById('qrExpire');
+  const qrSuccess     = document.getElementById('qrSuccess');
+  const phoneInput    = document.getElementById('phoneInput');
+  const inputHint     = document.getElementById('inputHint');
+  const pairBtn       = document.getElementById('pairBtn');
+  const codeReveal    = document.getElementById('codeReveal');
+  const codeDigits    = document.getElementById('codeDigits');
+  const copyBtn       = document.getElementById('copyBtn');
+  const copyLabel     = document.getElementById('copyLabel');
+  const timerText     = document.getElementById('timerText');
+  const codeSuccess   = document.getElementById('codeSuccess');
+
+  /* ── bootstrap ──────────────────────── */
+  async function init() {
+    try {
+      initOverlay.classList.add('hidden');
+      mainWrap.style.display = 'flex';
+      poll();
+      pollTimer = setInterval(poll, 3000);
+    } catch (e) {
+      initOverlay.querySelector('span').textContent = 'Could not reach server. Is the bot running?';
+    }
+  }
+
+  /* ── tab switch ─────────────────────── */
+  function switchTab(tab) {
+    activeTab = tab;
+    document.getElementById('tabQR').classList.toggle('active', tab === 'qr');
+    document.getElementById('tabCode').classList.toggle('active', tab === 'code');
+    document.getElementById('panelQR').classList.toggle('show', tab === 'qr');
+    document.getElementById('panelCode').classList.toggle('show', tab === 'code');
+  }
+
+  /* ── status polling ─────────────────── */
+  async function poll() {
+    try {
+      const r = await fetch('/api/status');
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      applyStatus(d.status, d.qr);
+    } catch {
+      applyDot('error', 'Cannot reach bot — is it running?');
+    }
+  }
+
+  function applyStatus(status, qr) {
+    botStatus = status;
+    if (status === 'connected') {
+      applyDot('connected', 'Bot connected ✓');
+      showConnected();
+    } else if (status === 'connecting') {
+      applyDot('connecting', 'Bot is starting up — ready to pair');
+      showPairingUI();
+      if (qr && qr !== lastQR) { lastQR = qr; renderQR(qr); }
+    } else {
+      applyDot('error', 'Bot is offline — starting…');
+      showPairingUI();
+    }
+  }
+
+  function applyDot(state, label) {
+    dot.className = 'dot ' + state;
+    statusText.textContent = label;
+  }
+
+  function showConnected() {
+    pairedCard.style.display = 'block';
+    pairingUI.style.display  = 'none';
+    qrSuccess.classList.add('show');
+    codeSuccess.classList.add('show');
+    pairBtn.disabled = true;
+    clearCountdown();
+  }
+
+  function showPairingUI() {
+    pairedCard.style.display = 'none';
+    pairingUI.style.display  = 'block';
+  }
+
+  /* ── QR render ──────────────────────── */
+  function renderQR(dataUrl) {
+    qrFrame.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    img.alt = 'WhatsApp QR code';
+    qrFrame.appendChild(img);
+    qrExpire.style.display = 'block';
+  }
+
+  /* ── phone input ────────────────────── */
+  phoneInput.addEventListener('input', () => {
+    phoneInput.value = phoneInput.value.replace(/\D/g, '');
+    phoneInput.classList.remove('err');
+    inputHint.className = 'hint';
+    inputHint.textContent = 'Country code first — e.g. 233 for Ghana, 234 for Nigeria, 27 for South Africa';
+  });
+
+  /* ── request pairing code ───────────── */
+  pairBtn.addEventListener('click', requestCode);
+  phoneInput.addEventListener('keydown', e => { if (e.key === 'Enter') requestCode(); });
+
+  async function requestCode() {
+    if (botStatus === 'connected') return;
+
+    const phone = phoneInput.value.replace(/\D/g, '').trim();
+
+    if (!phone) { shake(phoneInput); setErr('Enter your phone number first.'); return; }
+    if (phone.length < 7 || phone.length > 15) { shake(phoneInput); setErr("That number doesn\'t look right — include your country code."); return; }
+    if (botStatus !== 'connecting') { setErr('Bot isn\'t ready yet. Wait for the QR code then try again.'); return; }
+
+    pairBtn.disabled = true;
+    pairBtn.innerHTML = '<div class="spinner"></div> Getting code…';
+    codeReveal.classList.remove('show');
+    clearCountdown();
+
+    try {
+      const body = new URLSearchParams();
+      body.append('phone', phone);
+
+      const r = await fetch('/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      });
+
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to get pairing code.');
+
+      currentCode = d.code;
+      codeDigits.textContent = currentCode;
+      codeReveal.classList.add('show');
+      startCountdown(60);
+      inputHint.className = 'hint';
+      inputHint.textContent = 'Code sent! Enter it in WhatsApp now.';
+
+    } catch (err) {
+      setErr(err.message || 'Something went wrong. Try again.');
+    } finally {
+      pairBtn.disabled = false;
+      pairBtn.innerHTML = `
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/>
+        </svg>
+        Get a new code`;
+    }
+  }
+
+  /* ── countdown ──────────────────────── */
+  function startCountdown(secs) {
+    clearCountdown();
+    let left = secs;
+    timerText.textContent = `Code valid for ${left}s`;
+    codeExpireTimer = setInterval(() => {
+      left--;
+      if (left <= 0) {
+        clearCountdown();
+        timerText.textContent = 'Code expired — get a new one';
+        codeReveal.style.borderColor = 'rgba(239,68,68,.25)';
+      } else {
+        timerText.textContent = `Code valid for ${left}s`;
+      }
+    }, 1000);
+  }
+
+  function clearCountdown() {
+    if (codeExpireTimer) { clearInterval(codeExpireTimer); codeExpireTimer = null; }
+  }
+
+  /* ── copy ───────────────────────────── */
+  codeDigits.addEventListener('click', doCopy);
+  copyBtn.addEventListener('click', doCopy);
+
+  function doCopy() {
+    if (!currentCode) return;
+    navigator.clipboard.writeText(currentCode).then(() => {
+      copyLabel.textContent = 'Copied!';
+      setTimeout(() => copyLabel.textContent = 'Tap to copy', 2000);
+    });
+  }
+
+  /* ── helpers ────────────────────────── */
+  function setErr(msg) {
+    inputHint.className = 'hint err';
+    inputHint.textContent = msg;
+  }
+
+  function shake(el) {
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = 'shakeX .35s ease';
+    el.addEventListener('animationend', () => el.style.animation = '', { once: true });
+  }
+
+  /* ── boot ───────────────────────────── */
+  init();
+</script>
+
+</body>
+</html>

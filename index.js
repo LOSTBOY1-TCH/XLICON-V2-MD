@@ -12,12 +12,12 @@ const {
   proto,
   generateProfilePicture
 } = require('@whiskeysockets/baileys');
-const pino      = require('pino');
-const fs        = require('fs');
-const path      = require('path');
-const http      = require('http');
-const QRCode    = require('qrcode');
-const { Boom }  = require('@hapi/boom');
+const pino     = require('pino');
+const fs       = require('fs');
+const path     = require('path');
+const QRCode   = require('qrcode');
+const { Boom } = require('@hapi/boom');
+const express  = require('express');
 const { sendButtons, sendInteractiveMessage } = require('gifted-btns');
 const serializeMessage = require('./handler.js');
 const JimpImport = require('jimp');
@@ -28,21 +28,18 @@ const Jimp = JimpImport.read
   ? JimpImport.Jimp
   : JimpImport.default;
 
-global.generateWAMessageContent  = generateWAMessageContent;
+global.generateWAMessageContent   = generateWAMessageContent;
 global.generateWAMessageFromContent = generateWAMessageFromContent;
-global.generateMessageID          = generateMessageID;
-global.prepareWAMessageMedia      = prepareWAMessageMedia;
-global.proto                      = proto;
-global.Jimp                       = Jimp;
-global.generateProfilePicture     = generateProfilePicture;
-global.downloadMediaMessage       = downloadMediaMessage;
-global.bannedChats                = global.bannedChats || [];
+global.generateMessageID           = generateMessageID;
+global.prepareWAMessageMedia       = prepareWAMessageMedia;
+global.proto                       = proto;
+global.Jimp                        = Jimp;
+global.generateProfilePicture      = generateProfilePicture;
+global.downloadMediaMessage        = downloadMediaMessage;
+global.bannedChats                 = global.bannedChats || [];
 
-const PLUGIN_FOLDER = './plugins';
-const PORT          = process.env.PORT || 3000;
-
-// ── Use a single stable session (no session ID from user needed) ─────────────
-// Set SESSION_ID env var on Render to pin a name, or it defaults to "xlicon"
+const PLUGIN_FOLDER     = './plugins';
+const PORT              = process.env.PORT || 3000;
 const DEFAULT_SESSION_ID = process.env.SESSION_ID || 'xlicon';
 
 // sessions: Map<sessionId, SessionState>
@@ -87,7 +84,7 @@ function loadPrefix() {
 }
 loadPrefix();
 
-// ── Start a session ──────────────────────────────────────────────────────────
+// ── Start a WhatsApp session ─────────────────────────────────────────────────
 async function startSession(sessionId) {
   const authFolder = mkSessionDir(sessionId);
 
@@ -133,7 +130,7 @@ async function startSession(sessionId) {
       }
 
       if (connection === 'close') {
-        state.status      = 'disconnected';
+        state.status       = 'disconnected';
         state.isConnecting = false;
         state.qr           = null;
         if (state.presenceInterval) {
@@ -151,7 +148,7 @@ async function startSession(sessionId) {
         setTimeout(() => startSession(sessionId), 5000);
 
       } else if (connection === 'open') {
-        state.status      = 'connected';
+        state.status       = 'connected';
         state.isConnecting = false;
         state.qr           = null;
         state.pairingCode  = null;
@@ -180,7 +177,7 @@ async function startSession(sessionId) {
         } catch (_) {}
 
       } else if (connection === 'connecting') {
-        state.status      = 'connecting';
+        state.status       = 'connecting';
         state.isConnecting = true;
       }
     });
@@ -278,153 +275,92 @@ async function startSession(sessionId) {
   }
 }
 
-// ── Serve frontend/pair.html ──────────────────────────────────────────────────
-const FRONTEND_DIR  = path.join(__dirname, 'frontend');
-const pairHtmlPath  = path.join(FRONTEND_DIR, 'pair.html');
+// ── Express app ───────────────────────────────────────────────────────────────
+const app = express();
 
-function getPairHtml() {
-  return fs.existsSync(pairHtmlPath)
-    ? fs.readFileSync(pairHtmlPath, 'utf8')
-    : '<h1>frontend/pair.html not found</h1>';
-}
+// Trust Render's proxy so req.ip is correct
+app.set('trust proxy', 1);
 
-// ── MIME types for static frontend assets ─────────────────────────────────────
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.css':  'text/css; charset=utf-8',
-  '.js':   'application/javascript; charset=utf-8',
-  '.json': 'application/json',
-  '.png':  'image/png',
-  '.jpg':  'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif':  'image/gif',
-  '.svg':  'image/svg+xml',
-  '.ico':  'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2':'font/woff2',
-  '.ttf':  'font/ttf',
-};
+// Parse URL-encoded form bodies (for /pair POST)
+app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 
-function serveStaticFrontend(filePath, res) {
-  if (!fs.existsSync(filePath)) return false;
-  const ext      = path.extname(filePath).toLowerCase();
-  const mimeType = MIME[ext] || 'application/octet-stream';
-  res.writeHead(200, { 'Content-Type': mimeType });
-  res.end(fs.readFileSync(filePath));
-  return true;
-}
+// ── Serve frontend/ as static files ──────────────────────────────────────────
+const FRONTEND_DIR = path.join(__dirname, 'frontend');
+app.use(express.static(FRONTEND_DIR));
 
-// ── CORS helper ───────────────────────────────────────────────────────────────
-function setCORS(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-// ── HTTP server ───────────────────────────────────────────────────────────────
-const server = http.createServer((req, res) => {
-  const urlObj   = new URL(req.url, `http://localhost:${PORT}`);
-  const pathname = urlObj.pathname;
-
-  setCORS(res);
-
-  // handle preflight
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    return res.end();
-  }
-
-  // ── serve frontend (pair.html + any static assets in frontend/) ──────────
-  if (req.method === 'GET') {
-    // Root and /pair.html → frontend/pair.html
-    if (pathname === '/' || pathname === '/pair.html') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(getPairHtml());
-    }
-
-    // Any other path — try to resolve it inside the frontend/ folder
-    const staticPath = path.join(FRONTEND_DIR, pathname);
-    // Prevent path traversal outside frontend/
-    if (staticPath.startsWith(FRONTEND_DIR) && serveStaticFrontend(staticPath, res)) {
-      return;
-    }
-  }
-
-  // ── status — no session param needed, uses default session ───────────────
-  if (pathname === '/api/status' && req.method === 'GET') {
-    const sid = urlObj.searchParams.get('session') || DEFAULT_SESSION_ID;
-    const s   = sessions.get(sid);
-
-    if (!s) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ status: 'connecting', qr: null, pairingCode: null }));
-    }
-
-    // pairing code valid for 5 min
-    const pairingCode = (s.pairingCode && Date.now() - s.pairingCodeTime < 300_000)
-      ? s.pairingCode : null;
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({
-      status:      s.status,
-      qr:          s.qr,
-      pairingCode,
-      prefix:      global.BOT_PREFIX,
-      timestamp:   new Date().toISOString(),
-    }));
-  }
-
-  // ── request pairing code — session param optional ────────────────────────
-  if (pathname === '/pair' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', async () => {
-      try {
-        const params = new URLSearchParams(body);
-        const sid    = (params.get('session') || DEFAULT_SESSION_ID).trim();
-        let phone    = params.get('phone')?.replace(/\D/g, '').trim();
-
-        if (!phone) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Phone number required' }));
-        }
-
-        const s = sessions.get(sid);
-        if (!s) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Session not ready yet. Wait a moment and try again.' }));
-        }
-
-        if (s.status !== 'connecting' || !s.sock) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: `Bot not ready (${s.status}). Wait for QR to appear, then try.` }));
-        }
-
-        const code = await s.sock.requestPairingCode(phone);
-        s.pairingCode     = code;
-        s.pairingCodeTime = Date.now();
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ code }));
-        console.log(`✅ [${sid}] Pairing code for ${phone}: ${code}`);
-
-      } catch (e) {
-        console.error('❌ /pair error:', e);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // ── 404 ──────────────────────────────────────────────────────────────────
-  res.writeHead(404, { 'Content-Type': 'text/html' });
-  res.end('<center><h1>404 Not Found</h1><a href="/">Home</a></center>');
+// ── GET / → pair.html ────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.sendFile(path.join(FRONTEND_DIR, 'pair.html'));
 });
 
-server.listen(PORT, () => {
+// ── GET /pair → pair.html (so /pair works as a page URL) ─────────────────────
+app.get('/pair', (req, res) => {
+  res.sendFile(path.join(FRONTEND_DIR, 'pair.html'));
+});
+
+// ── GET /api/status ───────────────────────────────────────────────────────────
+app.get('/api/status', (req, res) => {
+  const sid = req.query.session || DEFAULT_SESSION_ID;
+  const s   = sessions.get(sid);
+
+  if (!s) {
+    return res.json({ status: 'connecting', qr: null, pairingCode: null });
+  }
+
+  // pairing code valid for 5 min
+  const pairingCode = (s.pairingCode && Date.now() - s.pairingCodeTime < 300_000)
+    ? s.pairingCode : null;
+
+  res.json({
+    status:      s.status,
+    qr:          s.qr,
+    pairingCode,
+    prefix:      global.BOT_PREFIX,
+    timestamp:   new Date().toISOString(),
+  });
+});
+
+// ── POST /pair → request pairing code ────────────────────────────────────────
+app.post('/pair', async (req, res) => {
+  try {
+    const sid   = (req.body.session || DEFAULT_SESSION_ID).trim();
+    const phone = (req.body.phone || '').replace(/\D/g, '').trim();
+
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone number required' });
+    }
+
+    const s = sessions.get(sid);
+    if (!s) {
+      return res.status(400).json({ error: 'Session not ready yet. Wait a moment and try again.' });
+    }
+
+    if (s.status !== 'connecting' || !s.sock) {
+      return res.status(400).json({ error: `Bot not ready (${s.status}). Wait for QR to appear, then try.` });
+    }
+
+    const code = await s.sock.requestPairingCode(phone);
+    s.pairingCode     = code;
+    s.pairingCodeTime = Date.now();
+
+    console.log(`✅ [${sid}] Pairing code for ${phone}: ${code}`);
+    res.json({ code });
+
+  } catch (e) {
+    console.error('❌ POST /pair error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── 404 fallback ─────────────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).send('<center><h1>404 Not Found</h1><a href="/">Home</a></center>');
+});
+
+// ── Start server ─────────────────────────────────────────────────────────────
+app.listen(PORT, () => {
   console.log(`🌐 Server at http://localhost:${PORT}`);
-  // Auto-start the default session — no user action needed
   startSession(DEFAULT_SESSION_ID);
 });
 
