@@ -1,5 +1,3 @@
-// Rewritten to avoid wa-sticker-formatter/sharp native binary issues.
-// Uses Jimp (already in dependencies) to resize + convert to WebP via ffmpeg.
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
