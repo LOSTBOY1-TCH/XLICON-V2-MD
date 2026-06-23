@@ -18,7 +18,7 @@ module.exports = {
             console.log('Sender ID (base):', senderBaseId);
         
             const isAdmin = groupMetadata.participants.some(p => 
-                (p.id === senderId || p.id === senderBaseId || p.phoneNumber === senderId || p.phoneNumber === senderBaseId) && p.admin === 'admin'
+                (p.id === senderId || p.id === senderBaseId || p.phoneNumber === senderId || p.phoneNumber === senderBaseId) && (p.admin === 'admin' || p.admin === 'superadmin')
             );
             
             console.log('Is admin:', isAdmin);
@@ -88,7 +88,7 @@ module.exports = {
 
             console.log('Final target:', targetPhoneNumber);
 
-            const isUserInGroup = groupMetadata.participants.some(p => p.phoneNumber === targetPhoneNumber);
+            const isUserInGroup = groupMetadata.participants.some(p => p.id === targetPhoneNumber || p.phoneNumber === targetPhoneNumber);
             
             if (!isUserInGroup) {
                 return m.reply('ᴛʜɪs ᴜsᴇʀ ɪs ɴᴏᴛ ɪɴ ᴛʜᴇ ɢʀᴏᴜᴘ ᴏʀ ʜᴀs ᴀʟʀᴇᴀᴅʏ ʙᴇᴇɴ ʀᴇᴍᴏᴠᴇᴅ.');
@@ -105,7 +105,7 @@ module.exports = {
             }
 
             const isTargetAdmin = groupMetadata.participants.some(p => 
-                p.phoneNumber === targetPhoneNumber && p.admin === 'admin'
+                (p.id === targetPhoneNumber || p.phoneNumber === targetPhoneNumber) && (p.admin === 'admin' || p.admin === 'superadmin')
             );
             
             if (isTargetAdmin) {
