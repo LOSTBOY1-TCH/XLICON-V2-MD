@@ -278,12 +278,40 @@ async function startSession(sessionId) {
   }
 }
 
-// ── Serve pair.html ───────────────────────────────────────────────────────────
-const pairHtmlPath = path.join(__dirname, 'pair.html');
+// ── Serve frontend/pair.html ──────────────────────────────────────────────────
+const FRONTEND_DIR  = path.join(__dirname, 'frontend');
+const pairHtmlPath  = path.join(FRONTEND_DIR, 'pair.html');
+
 function getPairHtml() {
   return fs.existsSync(pairHtmlPath)
     ? fs.readFileSync(pairHtmlPath, 'utf8')
-    : '<h1>pair.html not found</h1>';
+    : '<h1>frontend/pair.html not found</h1>';
+}
+
+// ── MIME types for static frontend assets ─────────────────────────────────────
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.css':  'text/css; charset=utf-8',
+  '.js':   'application/javascript; charset=utf-8',
+  '.json': 'application/json',
+  '.png':  'image/png',
+  '.jpg':  'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif':  'image/gif',
+  '.svg':  'image/svg+xml',
+  '.ico':  'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2':'font/woff2',
+  '.ttf':  'font/ttf',
+};
+
+function serveStaticFrontend(filePath, res) {
+  if (!fs.existsSync(filePath)) return false;
+  const ext      = path.extname(filePath).toLowerCase();
+  const mimeType = MIME[ext] || 'application/octet-stream';
+  res.writeHead(200, { 'Content-Type': mimeType });
+  res.end(fs.readFileSync(filePath));
+  return true;
 }
 
 // ── CORS helper ───────────────────────────────────────────────────────────────
@@ -306,10 +334,20 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
 
-  // ── serve pair.html ──────────────────────────────────────────────────────
-  if ((pathname === '/' || pathname === '/pair.html') && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    return res.end(getPairHtml());
+  // ── serve frontend (pair.html + any static assets in frontend/) ──────────
+  if (req.method === 'GET') {
+    // Root and /pair.html → frontend/pair.html
+    if (pathname === '/' || pathname === '/pair.html') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(getPairHtml());
+    }
+
+    // Any other path — try to resolve it inside the frontend/ folder
+    const staticPath = path.join(FRONTEND_DIR, pathname);
+    // Prevent path traversal outside frontend/
+    if (staticPath.startsWith(FRONTEND_DIR) && serveStaticFrontend(staticPath, res)) {
+      return;
+    }
   }
 
   // ── status — no session param needed, uses default session ───────────────
