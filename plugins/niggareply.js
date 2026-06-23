@@ -18,7 +18,7 @@ module.exports = {
                 key: {
                     fromMe: false,
                     participant: m.sender,
-                    ...(m.isGroup ? { remoteJid: m.from } : {}),
+                    remoteJid: m.from,
                 },
                 message: {
                     contactMessage: {
