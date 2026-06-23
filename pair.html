@@ -258,11 +258,6 @@
     <p>Link your WhatsApp to the bot. Pick QR scan or pairing code — whichever works for you.</p>
   </header>
 
-  <!-- Session ID badge -->
-  <div class="session-badge">
-    🆔 Your session: <span id="sessionIdDisplay">—</span>
-  </div>
-
   <!-- Status -->
   <div class="status-bar">
     <div class="dot connecting" id="dot"></div>
@@ -376,8 +371,7 @@
 </div>
 
 <script>
-  /* ── per-user state ──────────────────── */
-  let sessionId       = null;
+  /* ── state ──────────────────────────── */
   let botStatus       = null;
   let hasPaired       = false;
   let currentCode     = null;
@@ -389,7 +383,6 @@
   /* ── dom refs ───────────────────────── */
   const initOverlay   = document.getElementById('initOverlay');
   const mainWrap      = document.getElementById('mainWrap');
-  const sessionBadge  = document.getElementById('sessionIdDisplay');
   const dot           = document.getElementById('dot');
   const statusText    = document.getElementById('statusText');
   const pairedCard    = document.getElementById('pairedCard');
@@ -407,35 +400,18 @@
   const copyLabel     = document.getElementById('copyLabel');
   const timerText     = document.getElementById('timerText');
   const codeSuccess   = document.getElementById('codeSuccess');
-  const newSessionBtn = document.getElementById('newSessionBtn');
 
-  /* ── bootstrap: create session ──────── */
+  /* ── bootstrap ──────────────────────── */
   async function init() {
     try {
-      const r = await fetch('/api/session/create', { method: 'POST' });
-      const d = await r.json();
-      sessionId = d.sessionId;
-      sessionBadge.textContent = sessionId;
       initOverlay.classList.add('hidden');
       mainWrap.style.display = 'flex';
-      // start polling
       poll();
       pollTimer = setInterval(poll, 3000);
     } catch (e) {
       initOverlay.querySelector('span').textContent = 'Could not reach server. Is the bot running?';
     }
   }
-
-  /* ── new session button ─────────────── */
-  newSessionBtn.addEventListener('click', async () => {
-    clearInterval(pollTimer);
-    sessionId = null;
-    lastQR    = null;
-    mainWrap.style.display = 'none';
-    initOverlay.classList.remove('hidden');
-    initOverlay.querySelector('span').textContent = 'Starting your session…';
-    await init();
-  });
 
   /* ── tab switch ─────────────────────── */
   function switchTab(tab) {
@@ -448,9 +424,8 @@
 
   /* ── status polling ─────────────────── */
   async function poll() {
-    if (!sessionId) return;
     try {
-      const r = await fetch(`/api/status?session=${sessionId}`);
+      const r = await fetch('/api/status');
       if (!r.ok) throw new Error();
       const d = await r.json();
       applyStatus(d.status, d.qr);
@@ -521,7 +496,7 @@
     const phone = phoneInput.value.replace(/\D/g, '').trim();
 
     if (!phone) { shake(phoneInput); setErr('Enter your phone number first.'); return; }
-    if (phone.length < 7 || phone.length > 15) { shake(phoneInput); setErr("That number doesn't look right — include your country code."); return; }
+    if (phone.length < 7 || phone.length > 15) { shake(phoneInput); setErr("That number doesn\'t look right — include your country code."); return; }
     if (botStatus !== 'connecting') { setErr('Bot isn\'t ready yet. Wait for the QR code then try again.'); return; }
 
     pairBtn.disabled = true;
@@ -531,7 +506,6 @@
 
     try {
       const body = new URLSearchParams();
-      body.append('session', sessionId);
       body.append('phone', phone);
 
       const r = await fetch('/pair', {
@@ -541,7 +515,6 @@
       });
 
       const d = await r.json();
-
       if (!r.ok) throw new Error(d.error || 'Failed to get pairing code.');
 
       currentCode = d.code;

@@ -41,20 +41,17 @@ global.bannedChats                = global.bannedChats || [];
 const PLUGIN_FOLDER = './plugins';
 const PORT          = process.env.PORT || 3000;
 
-// ── Multi-session store ──────────────────────────────────────────────────────
+// ── Use a single stable session (no session ID from user needed) ─────────────
+// Set SESSION_ID env var on Render to pin a name, or it defaults to "xlicon"
+const DEFAULT_SESSION_ID = process.env.SESSION_ID || 'xlicon';
+
 // sessions: Map<sessionId, SessionState>
-// SessionState = { sock, status, qr, pairingCodes, presenceInterval, isConnecting }
 const sessions = new Map();
 
 function mkSessionDir(id) {
   const dir = path.join(__dirname, 'sessions', id);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
-}
-
-function generateSessionId() {
-  return Math.random().toString(36).slice(2, 10) +
-         Math.random().toString(36).slice(2, 10);
 }
 
 // ── Load plugins once ────────────────────────────────────────────────────────
@@ -90,7 +87,7 @@ function loadPrefix() {
 }
 loadPrefix();
 
-// ── Start a session for one user ─────────────────────────────────────────────
+// ── Start a session ──────────────────────────────────────────────────────────
 async function startSession(sessionId) {
   const authFolder = mkSessionDir(sessionId);
 
@@ -98,7 +95,8 @@ async function startSession(sessionId) {
     sock:             null,
     status:           'connecting',
     qr:               null,
-    pairingCodes:     new Map(),
+    pairingCode:      null,
+    pairingCodeTime:  0,
     presenceInterval: null,
     isConnecting:     true,
     authFolder,
@@ -148,16 +146,15 @@ async function startSession(sessionId) {
           : 0;
 
         if (code === DisconnectReason.loggedOut) {
-          // wipe creds and restart fresh
           fs.rmSync(authFolder, { recursive: true, force: true });
         }
-        // restart the session after a delay
         setTimeout(() => startSession(sessionId), 5000);
 
       } else if (connection === 'open') {
         state.status      = 'connected';
         state.isConnecting = false;
         state.qr           = null;
+        state.pairingCode  = null;
 
         if (!global.owners) global.owners = [];
         if (!global.owners.includes(sock.user.id)) {
@@ -178,7 +175,7 @@ async function startSession(sessionId) {
 
         try {
           await sock.sendMessage(sock.user.id, {
-            text: `🤖 Bot linked!\n📝 Prefix: ${global.BOT_PREFIX}\n🆔 Session: ${sessionId}\n⏰ ${new Date().toLocaleString()}`
+            text: `🤖 Bot linked!\n📝 Prefix: ${global.BOT_PREFIX}\n⏰ ${new Date().toLocaleString()}`
           });
         } catch (_) {}
 
@@ -289,45 +286,47 @@ function getPairHtml() {
     : '<h1>pair.html not found</h1>';
 }
 
+// ── CORS helper ───────────────────────────────────────────────────────────────
+function setCORS(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
 // ── HTTP server ───────────────────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
-  const urlObj = new URL(req.url, `http://localhost:${PORT}`);
+  const urlObj   = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = urlObj.pathname;
 
-  // ── serve pair.html as index ─────────────────────────────────────────────
+  setCORS(res);
+
+  // handle preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    return res.end();
+  }
+
+  // ── serve pair.html ──────────────────────────────────────────────────────
   if ((pathname === '/' || pathname === '/pair.html') && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(getPairHtml());
   }
 
-  // ── create / get session ─────────────────────────────────────────────────
-  if (pathname === '/api/session/create' && req.method === 'POST') {
-    const sessionId = generateSessionId();
-    startSession(sessionId);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ sessionId }));
-  }
-
-  // ── session status ───────────────────────────────────────────────────────
+  // ── status — no session param needed, uses default session ───────────────
   if (pathname === '/api/status' && req.method === 'GET') {
-    const sessionId = urlObj.searchParams.get('session');
-    if (!sessionId || !sessions.has(sessionId)) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'session not found' }));
+    const sid = urlObj.searchParams.get('session') || DEFAULT_SESSION_ID;
+    const s   = sessions.get(sid);
+
+    if (!s) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ status: 'connecting', qr: null, pairingCode: null }));
     }
 
-    const s = sessions.get(sessionId);
+    // pairing code valid for 5 min
+    const pairingCode = (s.pairingCode && Date.now() - s.pairingCodeTime < 300_000)
+      ? s.pairingCode : null;
 
-    // collect latest pairing code (not expired)
-    let pairingCode = null;
-    for (const [, data] of s.pairingCodes) {
-      if (Date.now() - data.timestamp < 300_000) { pairingCode = data.code; break; }
-    }
-
-    res.writeHead(200, {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
-    });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({
       status:      s.status,
       qr:          s.qr,
@@ -337,39 +336,39 @@ const server = http.createServer((req, res) => {
     }));
   }
 
-  // ── request pairing code ─────────────────────────────────────────────────
+  // ── request pairing code — session param optional ────────────────────────
   if (pathname === '/pair' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', async () => {
       try {
-        const params     = new URLSearchParams(body);
-        const sessionId  = params.get('session')?.trim();
-        let   phone      = params.get('phone')?.replace(/\D/g, '').trim();
-
-        if (!sessionId || !sessions.has(sessionId)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Invalid or missing session' }));
-        }
+        const params = new URLSearchParams(body);
+        const sid    = (params.get('session') || DEFAULT_SESSION_ID).trim();
+        let phone    = params.get('phone')?.replace(/\D/g, '').trim();
 
         if (!phone) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Phone number required' }));
         }
 
-        const s = sessions.get(sessionId);
+        const s = sessions.get(sid);
+        if (!s) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Session not ready yet. Wait a moment and try again.' }));
+        }
 
         if (s.status !== 'connecting' || !s.sock) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: `Bot not ready (${s.status}). Wait for QR to load.` }));
+          return res.end(JSON.stringify({ error: `Bot not ready (${s.status}). Wait for QR to appear, then try.` }));
         }
 
         const code = await s.sock.requestPairingCode(phone);
-        s.pairingCodes.set(phone, { code, timestamp: Date.now() });
+        s.pairingCode     = code;
+        s.pairingCodeTime = Date.now();
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ code }));
-        console.log(`✅ [${sessionId}] Pairing code for ${phone}: ${code}`);
+        console.log(`✅ [${sid}] Pairing code for ${phone}: ${code}`);
 
       } catch (e) {
         console.error('❌ /pair error:', e);
@@ -387,7 +386,8 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`🌐 Server at http://localhost:${PORT}`);
-  console.log(`📄 Pairing page: http://localhost:${PORT}/`);
+  // Auto-start the default session — no user action needed
+  startSession(DEFAULT_SESSION_ID);
 });
 
 process.on('SIGINT', () => {
