@@ -39,10 +39,9 @@
       background-size:100% 100%,48px 48px,48px 48px;
     }
 
-    /* ── wrap ─────────────────────────────── */
     .wrap{width:min(500px,100%);display:flex;flex-direction:column;gap:20px}
 
-    /* ── header ───────────────────────────── */
+    /* header */
     .header{text-align:center;padding:4px 0 8px}
     .wa-mark{
       display:inline-flex;align-items:center;justify-content:center;
@@ -55,7 +54,16 @@
     .header h1 em{font-style:normal;color:var(--green)}
     .header p{margin-top:10px;color:var(--muted);font-size:0.88rem;line-height:1.6;max-width:360px;margin-inline:auto}
 
-    /* ── status bar ───────────────────────── */
+    /* session badge */
+    .session-badge{
+      display:flex;align-items:center;gap:8px;
+      padding:9px 14px;background:var(--surface);
+      border:1px solid var(--border);border-radius:40px;
+      font-size:0.76rem;font-weight:600;color:var(--muted);
+    }
+    .session-badge span{font-family:'JetBrains Mono',monospace;color:var(--cyan);letter-spacing:.05em}
+
+    /* status bar */
     .status-bar{
       display:flex;align-items:center;gap:10px;
       padding:11px 16px;background:var(--surface);
@@ -69,7 +77,7 @@
     @keyframes pulse{from{opacity:.55}to{opacity:1}}
     #statusText{flex:1;color:var(--text)}
 
-    /* ── tab switcher ─────────────────────── */
+    /* tabs */
     .tabs{
       display:grid;grid-template-columns:1fr 1fr;
       background:var(--surface);border:1px solid var(--border);
@@ -86,15 +94,15 @@
     .tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.3)}
     .tab.active svg{opacity:1}
 
-    /* ── card ─────────────────────────────── */
+    /* card */
     .card{background:var(--card);border:1px solid var(--border);border-radius:24px;overflow:hidden}
     .card-body{padding:24px}
 
-    /* ── panel visibility ─────────────────── */
+    /* panels */
     .panel{display:none}
     .panel.show{display:block}
 
-    /* ── already paired notice ────────────── */
+    /* already paired */
     .paired-notice{
       text-align:center;padding:32px 24px;
       display:none;flex-direction:column;align-items:center;gap:14px;
@@ -108,12 +116,16 @@
     .paired-notice .big-check svg{width:28px;height:28px;stroke:var(--green);stroke-width:2.5;fill:none}
     .paired-notice h3{font-size:1.1rem;font-weight:700}
     .paired-notice p{font-size:0.84rem;color:var(--muted);line-height:1.6;max-width:280px}
-
-    /* ── QR panel ─────────────────────────── */
-    .qr-area{
-      display:flex;flex-direction:column;align-items:center;
-      gap:18px;padding:8px 0 4px;
+    .btn-new{
+      margin-top:4px;padding:10px 22px;background:var(--surface);
+      border:1px solid var(--border);border-radius:40px;
+      color:var(--text);font-size:0.83rem;font-weight:600;cursor:pointer;
+      transition:border-color .18s,color .18s;
     }
+    .btn-new:hover{border-color:var(--green);color:var(--green)}
+
+    /* QR */
+    .qr-area{display:flex;flex-direction:column;align-items:center;gap:18px;padding:8px 0 4px}
     .qr-frame{
       width:240px;height:240px;border-radius:18px;
       background:var(--surface);border:1px solid var(--border);
@@ -138,7 +150,7 @@
       font-size:0.68rem;font-weight:700;color:var(--text);flex-shrink:0;margin-top:1px;
     }
 
-    /* ── code panel ───────────────────────── */
+    /* code panel */
     .field-label{display:block;font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
     .input-row{position:relative}
     .input-row .pfx{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:0.9rem;color:var(--muted);pointer-events:none;font-weight:600}
@@ -167,7 +179,19 @@
     .spinner{width:17px;height:17px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
 
-    /* ── code reveal ──────────────────────── */
+    /* init spinner overlay */
+    .init-overlay{
+      position:fixed;inset:0;background:var(--bg);z-index:999;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+      color:var(--muted);font-size:0.88rem;
+    }
+    .init-overlay .big-spin{
+      width:40px;height:40px;border:3px solid var(--border2);border-top-color:var(--green);
+      border-radius:50%;animation:spin .8s linear infinite;
+    }
+    .init-overlay.hidden{display:none}
+
+    /* code reveal */
     .code-reveal{
       display:none;margin-top:20px;
       background:rgba(37,211,102,.06);border:1px solid rgba(37,211,102,.2);
@@ -192,13 +216,10 @@
     .copy-btn svg{width:13px;height:13px;flex-shrink:0}
     .code-guide{margin-top:14px;font-size:0.79rem;color:var(--muted);line-height:1.6}
     .code-guide strong{color:var(--text)}
-    .code-timer{
-      display:inline-flex;align-items:center;gap:5px;
-      margin-top:10px;font-size:0.73rem;color:var(--muted);
-    }
+    .code-timer{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:0.73rem;color:var(--muted)}
     .code-timer svg{width:13px;height:13px;flex-shrink:0}
 
-    /* ── success banner ───────────────────── */
+    /* success */
     .success-banner{
       display:none;margin-top:20px;align-items:center;gap:10px;
       padding:14px 18px;background:rgba(37,211,102,.08);
@@ -209,17 +230,24 @@
     .success-banner.show{display:flex}
     .success-banner svg{width:18px;height:18px;flex-shrink:0;stroke:var(--green);fill:none;stroke-width:2.5}
 
-    /* ── footer ───────────────────────────── */
     .foot{text-align:center;font-size:0.72rem;color:var(--muted);padding-bottom:4px}
 
     @media(max-width:460px){
       body{padding:20px 12px}
       .card-body{padding:18px 14px}
     }
+    @keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
   </style>
 </head>
 <body>
-<div class="wrap">
+
+<!-- init overlay -->
+<div class="init-overlay" id="initOverlay">
+  <div class="big-spin"></div>
+  <span>Starting your session…</span>
+</div>
+
+<div class="wrap" id="mainWrap" style="display:none">
 
   <!-- Header -->
   <header class="header">
@@ -230,24 +258,30 @@
     <p>Link your WhatsApp to the bot. Pick QR scan or pairing code — whichever works for you.</p>
   </header>
 
+  <!-- Session ID badge -->
+  <div class="session-badge">
+    🆔 Your session: <span id="sessionIdDisplay">—</span>
+  </div>
+
   <!-- Status -->
   <div class="status-bar">
     <div class="dot connecting" id="dot"></div>
-    <span id="statusText">Checking…</span>
+    <span id="statusText">Starting session…</span>
   </div>
 
-  <!-- Already paired notice (shown when connected) -->
+  <!-- Already paired -->
   <div class="card" id="pairedCard" style="display:none">
     <div class="paired-notice show">
       <div class="big-check">
         <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
-      <h3>Bot is already connected</h3>
-      <p>Your WhatsApp is linked and the bot is live. You only need to pair again if you switch devices or log out.</p>
+      <h3>Bot is connected ✓</h3>
+      <p>Your WhatsApp is linked and the bot is live. Pair again only if you switch devices or log out.</p>
+      <button class="btn-new" id="newSessionBtn">Start a new session</button>
     </div>
   </div>
 
-  <!-- Tabs + card (shown when not connected) -->
+  <!-- Pairing UI -->
   <div id="pairingUI">
 
     <div class="tabs">
@@ -338,20 +372,24 @@
     </div>
   </div>
 
-  <div class="foot">XLICON WhatsApp Bot · Session saved automatically · One link at a time</div>
+  <div class="foot">XLICON WhatsApp Bot · Each visitor gets their own session · Sessions run independently</div>
 </div>
 
 <script>
-  /* ── state ──────────────────────────── */
-  let botStatus = null;
-  let hasPaired = false;
-  let currentCode = null;
+  /* ── per-user state ──────────────────── */
+  let sessionId       = null;
+  let botStatus       = null;
+  let hasPaired       = false;
+  let currentCode     = null;
   let codeExpireTimer = null;
-  let pollTimer = null;
-  let activeTab = 'qr';
-  let lastQR = null;
+  let pollTimer       = null;
+  let activeTab       = 'qr';
+  let lastQR          = null;
 
-  /* ── dom ────────────────────────────── */
+  /* ── dom refs ───────────────────────── */
+  const initOverlay   = document.getElementById('initOverlay');
+  const mainWrap      = document.getElementById('mainWrap');
+  const sessionBadge  = document.getElementById('sessionIdDisplay');
   const dot           = document.getElementById('dot');
   const statusText    = document.getElementById('statusText');
   const pairedCard    = document.getElementById('pairedCard');
@@ -369,6 +407,35 @@
   const copyLabel     = document.getElementById('copyLabel');
   const timerText     = document.getElementById('timerText');
   const codeSuccess   = document.getElementById('codeSuccess');
+  const newSessionBtn = document.getElementById('newSessionBtn');
+
+  /* ── bootstrap: create session ──────── */
+  async function init() {
+    try {
+      const r = await fetch('/api/session/create', { method: 'POST' });
+      const d = await r.json();
+      sessionId = d.sessionId;
+      sessionBadge.textContent = sessionId;
+      initOverlay.classList.add('hidden');
+      mainWrap.style.display = 'flex';
+      // start polling
+      poll();
+      pollTimer = setInterval(poll, 3000);
+    } catch (e) {
+      initOverlay.querySelector('span').textContent = 'Could not reach server. Is the bot running?';
+    }
+  }
+
+  /* ── new session button ─────────────── */
+  newSessionBtn.addEventListener('click', async () => {
+    clearInterval(pollTimer);
+    sessionId = null;
+    lastQR    = null;
+    mainWrap.style.display = 'none';
+    initOverlay.classList.remove('hidden');
+    initOverlay.querySelector('span').textContent = 'Starting your session…';
+    await init();
+  });
 
   /* ── tab switch ─────────────────────── */
   function switchTab(tab) {
@@ -381,8 +448,9 @@
 
   /* ── status polling ─────────────────── */
   async function poll() {
+    if (!sessionId) return;
     try {
-      const r = await fetch('/api/status');
+      const r = await fetch(`/api/status?session=${sessionId}`);
       if (!r.ok) throw new Error();
       const d = await r.json();
       applyStatus(d.status, d.qr);
@@ -393,7 +461,6 @@
 
   function applyStatus(status, qr) {
     botStatus = status;
-
     if (status === 'connected') {
       applyDot('connected', 'Bot connected ✓');
       showConnected();
@@ -402,7 +469,7 @@
       showPairingUI();
       if (qr && qr !== lastQR) { lastQR = qr; renderQR(qr); }
     } else {
-      applyDot('error', 'Bot is offline — start it and refresh');
+      applyDot('error', 'Bot is offline — starting…');
       showPairingUI();
     }
   }
@@ -414,7 +481,7 @@
 
   function showConnected() {
     pairedCard.style.display = 'block';
-    pairingUI.style.display = 'none';
+    pairingUI.style.display  = 'none';
     qrSuccess.classList.add('show');
     codeSuccess.classList.add('show');
     pairBtn.disabled = true;
@@ -423,7 +490,7 @@
 
   function showPairingUI() {
     pairedCard.style.display = 'none';
-    pairingUI.style.display = 'block';
+    pairingUI.style.display  = 'block';
   }
 
   /* ── QR render ──────────────────────── */
@@ -453,18 +520,9 @@
 
     const phone = phoneInput.value.replace(/\D/g, '').trim();
 
-    if (!phone) {
-      shake(phoneInput); setErr('Enter your phone number first.');
-      return;
-    }
-    if (phone.length < 7 || phone.length > 15) {
-      shake(phoneInput); setErr("That number doesn't look right — include your country code.");
-      return;
-    }
-    if (botStatus !== 'connecting') {
-      setErr('Bot isn\'t ready yet. Wait for "Bot is starting up" then try again.');
-      return;
-    }
+    if (!phone) { shake(phoneInput); setErr('Enter your phone number first.'); return; }
+    if (phone.length < 7 || phone.length > 15) { shake(phoneInput); setErr("That number doesn't look right — include your country code."); return; }
+    if (botStatus !== 'connecting') { setErr('Bot isn\'t ready yet. Wait for the QR code then try again.'); return; }
 
     pairBtn.disabled = true;
     pairBtn.innerHTML = '<div class="spinner"></div> Getting code…';
@@ -473,29 +531,23 @@
 
     try {
       const body = new URLSearchParams();
+      body.append('session', sessionId);
       body.append('phone', phone);
+
       const r = await fetch('/pair', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body
       });
-      const html = await r.text();
 
-      if (html.includes('not ready') || html.includes('not connecting')) {
-        throw new Error("Bot isn't ready to pair right now. Wait a moment and try again.");
-      }
+      const d = await r.json();
 
-      const match = html.match(/Code:\s*([A-Z0-9\-]{6,12})/i)
-        || html.match(/>([A-Z0-9]{4}-[A-Z0-9]{4})</i)
-        || html.match(/\b([A-Z0-9]{8})\b/);
+      if (!r.ok) throw new Error(d.error || 'Failed to get pairing code.');
 
-      if (!match) throw new Error("Couldn't read the pairing code. Try again in a moment.");
-
-      currentCode = match[1].trim();
+      currentCode = d.code;
       codeDigits.textContent = currentCode;
       codeReveal.classList.add('show');
       startCountdown(60);
-
       inputHint.className = 'hint';
       inputHint.textContent = 'Code sent! Enter it in WhatsApp now.';
 
@@ -558,12 +610,8 @@
   }
 
   /* ── boot ───────────────────────────── */
-  poll();
-  pollTimer = setInterval(poll, 4000);
+  init();
 </script>
 
-<style>
-@keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
-</style>
 </body>
 </html>
