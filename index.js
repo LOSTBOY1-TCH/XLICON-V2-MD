@@ -26,34 +26,36 @@ const Jimp = JimpImport.read ? JimpImport
   : JimpImport.Jimp ? JimpImport.Jimp
   : JimpImport.default;
 
-global.generateWAMessageContent    = generateWAMessageContent;
-global.generateWAMessageFromContent = generateWAMessageFromContent;
-global.generateMessageID            = generateMessageID;
-global.prepareWAMessageMedia        = prepareWAMessageMedia;
-global.proto                        = proto;
-global.Jimp                         = Jimp;
-global.generateProfilePicture       = generateProfilePicture;
-global.downloadMediaMessage         = downloadMediaMessage;
-global.bannedChats                  = global.bannedChats || [];
+global.generateWAMessageContent     = generateWAMessageContent;
+global.generateWAMessageFromContent  = generateWAMessageFromContent;
+global.generateMessageID             = generateMessageID;
+global.prepareWAMessageMedia         = prepareWAMessageMedia;
+global.proto                         = proto;
+global.Jimp                          = Jimp;
+global.generateProfilePicture        = generateProfilePicture;
+global.downloadMediaMessage          = downloadMediaMessage;
+global.bannedChats                   = global.bannedChats || [];
 
-const PLUGIN_FOLDER = './plugins';
-const PORT          = process.env.PORT || 3000;
+const PLUGIN_FOLDER  = './plugins';
+const PORT           = process.env.PORT || 3000;
+const SESSIONS_DIR   = path.join(__dirname, 'sessions');
+const COOKIE_NAME    = 'xlicon_sid';
+const COOKIE_MAX_AGE = 7 * 24 * 60 * 60; // seconds
 
-// ── sessions: Map<sessionId, SessionState> ────────────────────────────────────
-// Each session is fully isolated: own WA socket, own IP lock, own auth folder.
+// ── sessions: Map<sessionId, state> ──────────────────────────────────────────
 const sessions = new Map();
 
 function mkSessionDir(id) {
-  const dir = path.join(__dirname, 'sessions', id);
+  const dir = path.join(SESSIONS_DIR, id);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function genSessionId() {
-  return crypto.randomBytes(8).toString('hex'); // e.g. "a3f9c12b44e6f018"
+function genId() {
+  return crypto.randomBytes(8).toString('hex');
 }
 
-function getClientIP(req) {
+function getIP(req) {
   return (
     req.headers['x-forwarded-for']?.split(',')[0].trim() ||
     req.headers['x-real-ip'] ||
@@ -62,32 +64,34 @@ function getClientIP(req) {
   );
 }
 
-// ── Load plugins once (shared across all sessions) ────────────────────────────
+// ── Load plugins (shared across all sessions) ─────────────────────────────────
 const commandMap       = new Map();
 const onMessagePlugins = [];
 
-const pluginPath = path.join(__dirname, PLUGIN_FOLDER);
-if (fs.existsSync(pluginPath)) {
-  for (const file of fs.readdirSync(pluginPath).filter(f => f.endsWith('.js'))) {
-    try {
-      const plugin = require(path.join(pluginPath, file));
-      if (!plugin?.name) continue;
-      if (typeof plugin.execute === 'function') {
-        commandMap.set(plugin.name.toLowerCase(), plugin);
-        if (Array.isArray(plugin.aliases))
-          plugin.aliases.forEach(a => commandMap.set(a.toLowerCase(), plugin));
+{
+  const pluginPath = path.join(__dirname, PLUGIN_FOLDER);
+  if (fs.existsSync(pluginPath)) {
+    for (const file of fs.readdirSync(pluginPath).filter(f => f.endsWith('.js'))) {
+      try {
+        const plugin = require(path.join(pluginPath, file));
+        if (!plugin?.name) continue;
+        if (typeof plugin.execute === 'function') {
+          commandMap.set(plugin.name.toLowerCase(), plugin);
+          if (Array.isArray(plugin.aliases))
+            plugin.aliases.forEach(a => commandMap.set(a.toLowerCase(), plugin));
+        }
+        if (typeof plugin.onMessage === 'function')
+          onMessagePlugins.push(plugin);
+        console.log(`✅ Plugin: ${plugin.name}`);
+      } catch (e) {
+        console.error(`❌ Plugin [${file}]: ${e.message}`);
       }
-      if (typeof plugin.onMessage === 'function')
-        onMessagePlugins.push(plugin);
-      console.log(`✅ Plugin: ${plugin.name}`);
-    } catch (e) {
-      console.error(`❌ Plugin [${file}]: ${e.message}`);
     }
   }
 }
 
-// ── Load prefix ───────────────────────────────────────────────────────────────
-function loadPrefix() {
+// ── Prefix ────────────────────────────────────────────────────────────────────
+{
   const cfgPath = path.join(__dirname, 'config.json');
   if (fs.existsSync(cfgPath)) {
     try {
@@ -96,15 +100,14 @@ function loadPrefix() {
     } catch (_) {}
   }
 }
-loadPrefix();
 
 // ── Start a WhatsApp session ──────────────────────────────────────────────────
 async function startSession(sessionId) {
   const authFolder = mkSessionDir(sessionId);
 
-  // Create or reset state for this session
-  const state = sessions.get(sessionId) || {};
-  Object.assign(state, {
+  // preserve lockedIP across reconnects
+  const existing = sessions.get(sessionId) || {};
+  const state = {
     id:              sessionId,
     sock:            null,
     status:          'connecting',
@@ -112,16 +115,16 @@ async function startSession(sessionId) {
     pairingCode:     null,
     pairingCodeTime: 0,
     presenceInterval: null,
-    paired:          false,   // true once WA connection.open fires
-    lockedIP:        state.lockedIP || null, // preserve lock across reconnects
+    paired:          false,
+    lockedIP:        existing.lockedIP || null,
     authFolder,
-  });
+  };
   sessions.set(sessionId, state);
 
   console.log(`🚀 [${sessionId}] Starting session…`);
 
   try {
-    const { version }                    = await fetchLatestWaWebVersion();
+    const { version }                     = await fetchLatestWaWebVersion();
     const { state: authState, saveCreds } = await useMultiFileAuthState(authFolder);
 
     const sock = makeWASocket({
@@ -152,16 +155,16 @@ async function startSession(sessionId) {
           clearInterval(state.presenceInterval);
           state.presenceInterval = null;
         }
-
         const code = (lastDisconnect?.error instanceof Boom)
           ? lastDisconnect.error.output.statusCode : 0;
 
         if (code === DisconnectReason.loggedOut) {
-          fs.rmSync(authFolder, { recursive: true, force: true });
-          state.paired    = false;
-          state.lockedIP  = null;
-          console.log(`🔓 [${sessionId}] Logged out — IP lock cleared`);
+          try { fs.rmSync(authFolder, { recursive: true, force: true }); } catch (_) {}
+          state.paired   = false;
+          state.lockedIP = null;
+          console.log(`🔓 [${sessionId}] Logged out — lock cleared`);
         }
+        // always reconnect
         setTimeout(() => startSession(sessionId), 5000);
 
       } else if (connection === 'open') {
@@ -180,6 +183,8 @@ async function startSession(sessionId) {
           });
         } catch (_) {}
 
+        console.log(`✅ [${sessionId}] Connected as ${sock.user?.id}`);
+
       } else if (connection === 'connecting') {
         state.status = 'connecting';
       }
@@ -187,7 +192,6 @@ async function startSession(sessionId) {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // ── Message handler ───────────────────────────────────────────────────────
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
       if (type !== 'notify' && type !== 'append') return;
 
@@ -196,6 +200,7 @@ async function startSession(sessionId) {
       for (const rawMsg of messages) {
         const jid = rawMsg.key?.remoteJid || '';
 
+        // newsletter reaction
         if (jid === CHANNEL_ID && rawMsg.key?.server_id) {
           const emojis = ['❤️','💛','👍','💜','😮','🤍','💙','🔥','💯','⚡'];
           try {
@@ -207,6 +212,7 @@ async function startSession(sessionId) {
           continue;
         }
 
+        // auto-read statuses
         if (jid === 'status@broadcast') {
           if (rawMsg.key.participant)
             try { await sock.readMessages([rawMsg.key]); } catch (_) {}
@@ -214,12 +220,13 @@ async function startSession(sessionId) {
         }
 
         if (rawMsg.key?.fromMe) continue;
-        if (!rawMsg.message)   continue;
+        if (!rawMsg.message)    continue;
 
         let m;
         try { m = await serializeMessage(sock, rawMsg); }
         catch (e) { console.error(`❌ [${sessionId}] serialize:`, e.message); continue; }
 
+        // onMessage hooks
         let blocked = false;
         for (const plugin of onMessagePlugins) {
           try {
@@ -228,22 +235,22 @@ async function startSession(sessionId) {
         }
         if (blocked) continue;
 
+        // prefix commands
         const body = m.body || '';
-        if (body.startsWith(global.BOT_PREFIX)) {
-          const parts       = body.slice(global.BOT_PREFIX.length).trim().split(/\s+/);
-          const commandName = parts[0]?.toLowerCase();
-          const args        = parts.slice(1);
-          if (!commandName) continue;
+        if (!body.startsWith(global.BOT_PREFIX)) continue;
 
-          const plugin = commandMap.get(commandName);
-          if (plugin) {
-            console.log(`▶ [${sessionId}][${m.isGroup ? 'GROUP' : 'DM'}] ${m.senderNumber} → .${commandName}`);
-            try { await plugin.execute(sock, m, args); }
-            catch (e) {
-              console.error(`❌ Command [${commandName}]:`, e.message);
-              try { await m.reply(`❌ Error: ${e.message}`); } catch (_) {}
-            }
-          }
+        const parts       = body.slice(global.BOT_PREFIX.length).trim().split(/\s+/);
+        const commandName = parts[0]?.toLowerCase();
+        if (!commandName) continue;
+
+        const plugin = commandMap.get(commandName);
+        if (!plugin) continue;
+
+        console.log(`▶ [${sessionId}][${m.isGroup ? 'GRP' : 'DM'}] ${m.senderNumber} → .${commandName}`);
+        try { await plugin.execute(sock, m, parts.slice(1)); }
+        catch (e) {
+          console.error(`❌ [${commandName}]:`, e.message);
+          try { await m.reply(`❌ Error: ${e.message}`); } catch (_) {}
         }
       }
     });
@@ -251,6 +258,21 @@ async function startSession(sessionId) {
   } catch (e) {
     console.error(`❌ [${sessionId}] Startup error:`, e.message);
     setTimeout(() => startSession(sessionId), 10000);
+  }
+}
+
+// ── Restore existing sessions from disk on boot ───────────────────────────────
+function restoreSessions() {
+  if (!fs.existsSync(SESSIONS_DIR)) return;
+  const dirs = fs.readdirSync(SESSIONS_DIR).filter(d => /^[0-9a-f]{16}$/.test(d));
+  for (const sid of dirs) {
+    const authFolder = path.join(SESSIONS_DIR, sid);
+    // only restore if there are actual creds saved
+    const hasCreds = fs.existsSync(path.join(authFolder, 'creds.json'));
+    if (hasCreds) {
+      console.log(`♻️  Restoring session ${sid}`);
+      startSession(sid);
+    }
   }
 }
 
@@ -263,57 +285,55 @@ app.use(express.json());
 const FRONTEND_DIR = path.join(__dirname, 'frontend');
 app.use(express.static(FRONTEND_DIR));
 
-// ── Session middleware: assign each visitor a persistent session ID via cookie ─
-const COOKIE_NAME  = 'xlicon_sid';
-const COOKIE_MAXAGE = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-function ensureSession(req, res, next) {
-  let sid = req.cookies?.[COOKIE_NAME];
-
-  // validate: must be 16 hex chars and exist in sessions map
-  if (!sid || !/^[0-9a-f]{16}$/.test(sid) || !sessions.has(sid)) {
-    sid = genSessionId();
-    res.cookie(COOKIE_NAME, sid, {
-      maxAge:   COOKIE_MAXAGE,
-      httpOnly: true,
-      sameSite: 'lax',
-    });
-    // boot the new session immediately
-    startSession(sid);
-    console.log(`🆕 New session ${sid} for IP ${getClientIP(req)}`);
-  }
-
-  req.sessionId = sid;
-  next();
-}
-
-// parse cookies manually (no cookie-parser dep needed)
-app.use((req, res, next) => {
+// ── Cookie parser ─────────────────────────────────────────────────────────────
+app.use((req, _res, next) => {
   req.cookies = {};
   const raw = req.headers.cookie || '';
-  raw.split(';').forEach(part => {
-    const [k, ...v] = part.trim().split('=');
-    if (k) req.cookies[k.trim()] = decodeURIComponent(v.join('='));
-  });
+  for (const part of raw.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    const key = part.slice(0, eq).trim();
+    const val = part.slice(eq + 1).trim();
+    try { req.cookies[key] = decodeURIComponent(val); } catch (_) { req.cookies[key] = val; }
+  }
   next();
 });
 
-// ── IP lock check per session ─────────────────────────────────────────────────
-function ipLockCheck(req, res, next) {
-  const sid   = req.sessionId;
-  const state = sessions.get(sid);
-  if (!state || !state.paired) return next(); // not connected yet — open
+// ── Session middleware ────────────────────────────────────────────────────────
+function ensureSession(req, res, next) {
+  const raw = req.cookies[COOKIE_NAME] || '';
+  const sid = /^[0-9a-f]{16}$/.test(raw) ? raw : null;
 
-  const ip = getClientIP(req);
+  if (sid && sessions.has(sid)) {
+    // existing valid session
+    req.sessionId = sid;
+    return next();
+  }
 
-  // New IP (not the one who paired) — let them pair and take over
-  if (!state.lockedIP || ip !== state.lockedIP) return next();
-
-  // Same IP that paired — block re-pairing, show info page
-  return res.status(200).send(blockedPage());
+  // new visitor — create session
+  const newId = genId();
+  res.setHeader('Set-Cookie',
+    `${COOKIE_NAME}=${newId}; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; SameSite=Lax; Path=/`
+  );
+  req.sessionId = newId;
+  startSession(newId);
+  console.log(`🆕 New session ${newId} for IP ${getIP(req)}`);
+  next();
 }
 
-function blockedPage() {
+// ── IP lock middleware ─────────────────────────────────────────────────────────
+function ipLockCheck(req, res, next) {
+  const state = sessions.get(req.sessionId);
+  if (!state?.paired) return next();          // not connected — open
+
+  const ip = getIP(req);
+  if (!state.lockedIP || ip !== state.lockedIP) return next(); // new IP — allow
+
+  // same IP that paired — show info page
+  return res.status(200).send(alreadyConnectedPage());
+}
+
+function alreadyConnectedPage() {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -347,11 +367,18 @@ function blockedPage() {
 </div></body></html>`;
 }
 
-// ── Pages ─────────────────────────────────────────────────────────────────────
+// ── Routes ────────────────────────────────────────────────────────────────────
 app.get('/',     ensureSession, ipLockCheck, (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'pair.html')));
 app.get('/pair', ensureSession, ipLockCheck, (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'pair.html')));
 
-// ── API: status ───────────────────────────────────────────────────────────────
+// New session — clears cookie so next load gets a fresh one
+app.get('/new-session', (req, res) => {
+  res.setHeader('Set-Cookie',
+    `${COOKIE_NAME}=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/`
+  );
+  res.redirect('/');
+});
+
 app.get('/api/status', ensureSession, (req, res) => {
   const state = sessions.get(req.sessionId);
   if (!state) return res.json({ status: 'connecting', qr: null, pairingCode: null });
@@ -360,25 +387,22 @@ app.get('/api/status', ensureSession, (req, res) => {
     ? state.pairingCode : null;
 
   res.json({
-    status:     state.status,
-    qr:         state.qr,
+    status:    state.status,
+    qr:        state.qr,
     pairingCode,
-    prefix:     global.BOT_PREFIX,
-    sessionId:  req.sessionId,
+    prefix:    global.BOT_PREFIX,
+    sessionId: req.sessionId,
   });
 });
 
-// ── API: request pairing code ─────────────────────────────────────────────────
 app.post('/pair', ensureSession, ipLockCheck, async (req, res) => {
   try {
-    const sid   = req.sessionId;
     const phone = (req.body.phone || '').replace(/\D/g, '').trim();
-
     if (!phone) return res.status(400).json({ error: 'Phone number required' });
 
-    const state = sessions.get(sid);
-    if (!state)       return res.status(400).json({ error: 'Session not ready. Reload and try again.' });
-    if (!state.sock)  return res.status(400).json({ error: 'Socket not ready.' });
+    const state = sessions.get(req.sessionId);
+    if (!state)      return res.status(400).json({ error: 'Session not ready. Reload and try again.' });
+    if (!state.sock) return res.status(400).json({ error: 'Socket not initialised yet.' });
     if (state.status !== 'connecting')
       return res.status(400).json({ error: `Bot is ${state.status}. Pairing only works while connecting.` });
 
@@ -386,11 +410,13 @@ app.post('/pair', ensureSession, ipLockCheck, async (req, res) => {
     state.pairingCode     = code;
     state.pairingCodeTime = Date.now();
 
-    // lock this session to the requester's IP
-    const ip = getClientIP(req);
-    if (!state.lockedIP) state.lockedIP = ip;
+    const ip = getIP(req);
+    if (!state.lockedIP) {
+      state.lockedIP = ip;
+      console.log(`🔒 [${req.sessionId}] IP locked to ${ip}`);
+    }
 
-    console.log(`✅ [${sid}] Pairing code for ${phone}: ${code} (IP: ${ip})`);
+    console.log(`✅ [${req.sessionId}] Pairing code → ${phone}: ${code}`);
     res.json({ code });
 
   } catch (e) {
@@ -399,13 +425,12 @@ app.post('/pair', ensureSession, ipLockCheck, async (req, res) => {
   }
 });
 
-// ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).send('<center><h2>404</h2><a href="/">Home</a></center>'));
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`🌐 XLICON server → http://localhost:${PORT}`);
-  // No default session at boot — sessions are created on-demand per visitor
+  console.log(`🌐 XLICON → http://localhost:${PORT}`);
+  restoreSessions(); // resume any previously paired sessions from disk
 });
 
 process.on('SIGINT', () => {
