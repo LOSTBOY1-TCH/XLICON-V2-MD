@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>XLICON — Connect Your WhatsApp</title>
+  <!-- Set content to your backend URL when hosting frontend separately,
+       e.g. <meta name="api-base" content="https://xlicon.onrender.com">
+       Leave empty when the backend serves this file directly. -->
+  <meta name="api-base" content="">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
@@ -371,6 +375,14 @@
 </div>
 
 <script>
+  /* ── API base URL ───────────────────── *
+   * When served by the same Node server:  leave API_BASE empty → relative URLs
+   * When hosted separately (Netlify etc.): set window.API_BASE or the meta tag
+   *   <meta name="api-base" content="https://your-backend.onrender.com">
+   ***************************************/
+  const _metaBase = document.querySelector('meta[name="api-base"]');
+  const API_BASE  = (window.API_BASE || (_metaBase && _metaBase.content) || '').replace(/\/$/, '');
+
   /* ── state ──────────────────────────── */
   let botStatus       = null;
   let hasPaired       = false;
@@ -425,7 +437,7 @@
   /* ── status polling ─────────────────── */
   async function poll() {
     try {
-      const r = await fetch('/api/status');
+      const r = await fetch(API_BASE + '/api/status');
       if (!r.ok) throw new Error();
       const d = await r.json();
       applyStatus(d.status, d.qr);
@@ -508,7 +520,7 @@
       const body = new URLSearchParams();
       body.append('phone', phone);
 
-      const r = await fetch('/pair', {
+      const r = await fetch(API_BASE + '/pair', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body
@@ -583,6 +595,14 @@
   }
 
   /* ── boot ───────────────────────────── */
+  /* ── new session button ─────────────── */
+  const newSessionBtn = document.getElementById('newSessionBtn');
+  if (newSessionBtn) {
+    newSessionBtn.addEventListener('click', () => {
+      window.location.href = '/new-session';
+    });
+  }
+
   init();
 </script>
 
