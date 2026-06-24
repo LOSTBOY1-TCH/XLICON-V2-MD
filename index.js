@@ -35,6 +35,9 @@ global.Jimp                          = Jimp;
 global.generateProfilePicture        = generateProfilePicture;
 global.downloadMediaMessage          = downloadMediaMessage;
 global.bannedChats                   = global.bannedChats || [];
+global.antiDeleteStore               = global.antiDeleteStore || {};
+global.autoStatusView                = global.autoStatusView || false;
+global.autoStatusLike                = global.autoStatusLike || false;
 
 const PLUGIN_FOLDER = './plugins';
 const PORT          = process.env.PORT || 3000;
@@ -43,8 +46,6 @@ const COOKIE_NAME   = 'xlicon_sid';
 const COOKIE_MAX    = 7 * 24 * 60 * 60; // 7 days in seconds
 
 // ── Session store ─────────────────────────────────────────────────────────────
-// Map<sessionId, SessionState>
-// SessionState includes a `starting` flag to prevent duplicate socket boots
 const sessions = new Map();
 
 function mkSessionDir(id) {
@@ -66,9 +67,12 @@ function getIP(req) {
   );
 }
 
-// ── Load plugins (shared, loaded once) ───────────────────────────────────────
-const commandMap       = new Map(); // name/alias → plugin (has execute)
-const onMessagePlugins = [];        // plugins with onMessage hook
+// ── Load plugins ──────────────────────────────────────────────────────────────
+// commandMap  → prefix commands  (plugin.execute)
+// hookPlugins → passive hooks    (plugin.onMessage)
+// Both are independent — a plugin can have one or both
+const commandMap  = new Map();
+const hookPlugins = [];
 
 {
   const pluginPath = path.join(__dirname, PLUGIN_FOLDER);
@@ -78,14 +82,16 @@ const onMessagePlugins = [];        // plugins with onMessage hook
         const plugin = require(path.join(pluginPath, file));
         if (!plugin?.name) continue;
 
+        // register execute commands
         if (typeof plugin.execute === 'function') {
           commandMap.set(plugin.name.toLowerCase(), plugin);
           if (Array.isArray(plugin.aliases))
             plugin.aliases.forEach(a => commandMap.set(a.toLowerCase(), plugin));
         }
 
+        // register onMessage hooks separately
         if (typeof plugin.onMessage === 'function')
-          onMessagePlugins.push(plugin);
+          hookPlugins.push(plugin);
 
         console.log(`✅ Plugin: ${plugin.name}`);
       } catch (e) {
@@ -93,7 +99,7 @@ const onMessagePlugins = [];        // plugins with onMessage hook
       }
     }
   }
-  console.log(`📦 ${commandMap.size} commands | ${onMessagePlugins.length} hooks loaded`);
+  console.log(`📦 ${commandMap.size} commands | ${hookPlugins.length} hooks`);
 }
 
 // ── Prefix ────────────────────────────────────────────────────────────────────
@@ -107,24 +113,35 @@ const onMessagePlugins = [];        // plugins with onMessage hook
   }
 }
 
+// ── Welcome / goodbye helper (used by group-participants.update) ───────────────
+function getGroupSettings(groupId) {
+  const settingsPath = path.join(__dirname, 'data', 'groupSettings.json');
+  try {
+    if (!fs.existsSync(settingsPath)) return { welcome: false, goodbye: false };
+    const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    return data[groupId] || { welcome: false, goodbye: false };
+  } catch {
+    return { welcome: false, goodbye: false };
+  }
+}
+
 // ── Start a WhatsApp session ──────────────────────────────────────────────────
-// Guards against duplicate starts with state.starting flag.
+// `state.starting` flag prevents duplicate sockets being spawned for the same session.
 async function startSession(sessionId) {
   const existing = sessions.get(sessionId);
 
-  // If a socket is already alive or a start is already in progress, skip
+  // Guard: skip if a start is already running or socket is live and connected
   if (existing?.starting) {
-    console.log(`⏭  [${sessionId}] Start already in progress — skipping`);
+    console.log(`⏭  [${sessionId}] Already starting — skipped`);
     return;
   }
   if (existing?.sock && existing.status === 'connected') {
-    console.log(`⏭  [${sessionId}] Already connected — skipping`);
+    console.log(`⏭  [${sessionId}] Already connected — skipped`);
     return;
   }
 
   const authFolder = mkSessionDir(sessionId);
 
-  // Build state, preserving lockedIP from previous state
   const state = {
     id:              sessionId,
     sock:            null,
@@ -135,7 +152,7 @@ async function startSession(sessionId) {
     presenceInterval: null,
     paired:          false,
     lockedIP:        existing?.lockedIP || null,
-    starting:        true,   // ← lock: prevents concurrent startSession calls
+    starting:        true,
     authFolder,
   };
   sessions.set(sessionId, state);
@@ -158,9 +175,9 @@ async function startSession(sessionId) {
     });
 
     state.sock     = sock;
-    state.starting = false; // socket created — lock released
+    state.starting = false;
 
-    // ── connection events ─────────────────────────────────────────────────
+    // ── Connection events ─────────────────────────────────────────────────
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
@@ -185,17 +202,13 @@ async function startSession(sessionId) {
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
         if (!shouldReconnect) {
-          // logged out — wipe creds, reset lock
           try { fs.rmSync(authFolder, { recursive: true, force: true }); } catch (_) {}
           state.paired   = false;
           state.lockedIP = null;
-          console.log(`🔓 [${sessionId}] Logged out — creds wiped, lock cleared`);
-        }
-
-        if (shouldReconnect) {
-          console.log(`🔄 [${sessionId}] Reconnecting in 5s… (code: ${statusCode})`);
-          // null the sock so the guard above allows a fresh start
-          state.sock = null;
+          console.log(`🔓 [${sessionId}] Logged out — creds wiped`);
+        } else {
+          console.log(`🔄 [${sessionId}] Reconnecting in 5s (code ${statusCode})…`);
+          state.sock = null; // clear so guard lets next start through
           setTimeout(() => startSession(sessionId), 5000);
         }
 
@@ -205,15 +218,31 @@ async function startSession(sessionId) {
         state.paired   = true;
         state.starting = false;
 
+        // keep online
         state.presenceInterval = setInterval(() => {
           if (sock?.ws?.readyState === 1) sock.sendPresenceUpdate('available');
         }, 10000);
 
-        console.log(`✅ [${sessionId}] Connected as ${sock.user?.id}`);
+        const userJid = sock.user.id;
+        console.log(`✅ [${sessionId}] Connected as ${userJid}`);
 
+        // send connected notification to self
         try {
-          await sock.sendMessage(sock.user.id, {
-            text: `🤖 XLICON connected!\n📝 Prefix: ${global.BOT_PREFIX}\n⏰ ${new Date().toLocaleString()}`
+          await sock.sendMessage(userJid, {
+            text: [
+              `╔══════════════════╗`,
+              `║   🤖 XLICON BOT  ║`,
+              `╚══════════════════╝`,
+              ``,
+              `✅ *Bot Successfully Connected!*`,
+              ``,
+              `📝 Prefix : ${global.BOT_PREFIX}`,
+              `📦 Plugins: ${commandMap.size} commands loaded`,
+              `🔗 Session: ${sessionId}`,
+              `⏰ Time   : ${new Date().toLocaleString()}`,
+              ``,
+              `_Send ${global.BOT_PREFIX}menu to see all commands_`,
+            ].join('\n')
           });
         } catch (_) {}
 
@@ -222,9 +251,10 @@ async function startSession(sessionId) {
       }
     });
 
+    // ── Credentials updated ───────────────────────────────────────────────
     sock.ev.on('creds.update', saveCreds);
 
-    // ── messages ──────────────────────────────────────────────────────────
+    // ── Messages ──────────────────────────────────────────────────────────
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
       if (type !== 'notify' && type !== 'append') return;
 
@@ -233,7 +263,7 @@ async function startSession(sessionId) {
       for (const rawMsg of messages) {
         const jid = rawMsg.key?.remoteJid || '';
 
-        // newsletter auto-react
+        // ── newsletter auto-react ────────────────────────────────────────
         if (jid === CHANNEL_ID && rawMsg.key?.server_id) {
           const emojis = ['❤️','💛','👍','💜','😮','🤍','💙','🔥','💯','⚡'];
           try {
@@ -246,36 +276,64 @@ async function startSession(sessionId) {
           continue;
         }
 
-        // auto-read status
+        // ── status broadcast: auto-view + auto-like ──────────────────────
         if (jid === 'status@broadcast') {
-          if (rawMsg.key.participant)
-            try { await sock.readMessages([rawMsg.key]); } catch (_) {}
+          try { await sock.readMessages([rawMsg.key]); } catch (_) {}
+
+          if (global.autoStatusLike && rawMsg.key.participant) {
+            try {
+              await sock.sendMessage('status@broadcast', {
+                react: { key: rawMsg.key, text: '❤️' }
+              });
+            } catch (_) {}
+          }
           continue;
         }
 
-        if (rawMsg.key?.fromMe) continue; // skip own messages
-        if (!rawMsg.message)    continue; // skip empty
+        // skip own messages and empty messages
+        if (rawMsg.key?.fromMe) continue;
+        if (!rawMsg.message)    continue;
+
+        // ── antidelete: store messages before processing ──────────────────
+        if (global.antiDeleteStore) {
+          const chatId = jid;
+          if (!global.antiDeleteStore[chatId]) global.antiDeleteStore[chatId] = {};
+          if (!global.antiDeleteStore[chatId].enabled) {
+            // store anyway for when it gets enabled
+          }
+          // Store message in cache keyed by message ID
+          const msgId = rawMsg.key.id;
+          if (!global.msgCache) global.msgCache = new Map();
+          global.msgCache.set(msgId, { msg: rawMsg, time: Date.now(), jid: chatId });
+          // prune cache older than 30 min
+          if (global.msgCache.size > 500) {
+            const cutoff = Date.now() - 30 * 60 * 1000;
+            for (const [k, v] of global.msgCache) {
+              if (v.time < cutoff) global.msgCache.delete(k);
+            }
+          }
+        }
 
         let m;
         try {
           m = await serializeMessage(sock, rawMsg);
         } catch (e) {
-          console.error(`❌ [${sessionId}] serialize error:`, e.message);
+          console.error(`❌ [${sessionId}] serialize:`, e.message);
           continue;
         }
 
-        // onMessage hooks (autoreact, antidelete, etc.)
+        // ── run onMessage hooks (autoreact, niggareply, arise, etc.) ──────
         let blocked = false;
-        for (const plugin of onMessagePlugins) {
+        for (const plugin of hookPlugins) {
           try {
             if (await plugin.onMessage(sock, m) === true) { blocked = true; break; }
           } catch (e) {
-            console.error(`❌ onMessage [${plugin.name}]:`, e.message);
+            console.error(`❌ hook [${plugin.name}]:`, e.message);
           }
         }
         if (blocked) continue;
 
-        // prefix commands
+        // ── prefix command dispatch ───────────────────────────────────────
         const body = m.body || '';
         if (!body.startsWith(global.BOT_PREFIX)) continue;
 
@@ -290,9 +348,93 @@ async function startSession(sessionId) {
         try {
           await plugin.execute(sock, m, parts.slice(1));
         } catch (e) {
-          console.error(`❌ Command [${commandName}]:`, e.message);
+          console.error(`❌ cmd [${commandName}]:`, e.message);
           try { await m.reply(`❌ Error: ${e.message}`); } catch (_) {}
         }
+      }
+    });
+
+    // ── Message delete: antidelete ────────────────────────────────────────
+    sock.ev.on('messages.delete', async (item) => {
+      try {
+        const keys = item.keys || [];
+        for (const key of keys) {
+          const msgId = key.id;
+          const jid   = key.remoteJid;
+
+          if (!global.antiDeleteStore?.[jid]?.enabled) continue;
+          const cached = global.msgCache?.get(msgId);
+          if (!cached) continue;
+
+          const sendTo = global.antiDeleteStore[jid].notifyJid || jid;
+          const originalMsg = cached.msg;
+
+          // forward the deleted message
+          const msgType = Object.keys(originalMsg.message || {})[0];
+          try {
+            await sock.sendMessage(sendTo, {
+              text: `🗑️ *Deleted Message Detected*\n👤 From: @${key.participant?.split('@')[0] || 'unknown'}`,
+              mentions: key.participant ? [key.participant] : []
+            });
+            if (originalMsg.message) {
+              await sock.copyNForward(sendTo, originalMsg, true);
+            }
+          } catch (_) {}
+        }
+      } catch (e) {
+        console.error('❌ antidelete handler:', e.message);
+      }
+    });
+
+    // ── Group participants: welcome / goodbye ─────────────────────────────
+    sock.ev.on('group-participants.update', async (update) => {
+      try {
+        const { id: groupId, participants, action } = update;
+        const settings = getGroupSettings(groupId);
+
+        for (const participant of participants) {
+          const userId = typeof participant === 'string'
+            ? participant
+            : participant.id || participant.phoneNumber;
+          if (!userId) continue;
+          if (userId === sock.user.id) continue; // skip self
+
+          const name   = userId.split('@')[0];
+          let groupMeta;
+          try { groupMeta = await sock.groupMetadata(groupId); } catch (_) {}
+          const groupName  = groupMeta?.subject || 'the group';
+          const memberCount = groupMeta?.participants?.length || 0;
+
+          if (action === 'add' && settings.welcome) {
+            await sock.sendMessage(groupId, {
+              text: [
+                `╔══════════════════╗`,
+                `║   👋 WELCOME!    ║`,
+                `╚══════════════════╝`,
+                ``,
+                `Hey @${name}! Welcome to *${groupName}* 🎉`,
+                `You are member #${memberCount}`,
+                ``,
+                `_Enjoy your stay!_ 🌟`,
+              ].join('\n'),
+              mentions: [userId]
+            });
+          } else if (action === 'remove' && settings.goodbye) {
+            await sock.sendMessage(groupId, {
+              text: [
+                `╔══════════════════╗`,
+                `║   👋 GOODBYE!    ║`,
+                `╚══════════════════╝`,
+                ``,
+                `@${name} has left *${groupName}*.`,
+                `We'll miss you! 💔`,
+              ].join('\n'),
+              mentions: [userId]
+            });
+          }
+        }
+      } catch (e) {
+        console.error('❌ group-participants.update:', e.message);
       }
     });
 
@@ -310,13 +452,12 @@ function restoreSessions() {
   const dirs = fs.readdirSync(SESSIONS_DIR)
     .filter(d => /^[0-9a-f]{16}$/.test(d))
     .filter(d => fs.existsSync(path.join(SESSIONS_DIR, d, 'creds.json')));
-
-  if (dirs.length === 0) return;
+  if (!dirs.length) return;
   console.log(`♻️  Restoring ${dirs.length} session(s) from disk…`);
   for (const sid of dirs) startSession(sid);
 }
 
-// ── Express app ───────────────────────────────────────────────────────────────
+// ── Express ───────────────────────────────────────────────────────────────────
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: false }));
@@ -328,8 +469,7 @@ app.use(express.static(FRONTEND_DIR));
 // ── Cookie parser ─────────────────────────────────────────────────────────────
 app.use((req, _res, next) => {
   req.cookies = {};
-  const raw = req.headers.cookie || '';
-  for (const part of raw.split(';')) {
+  for (const part of (req.headers.cookie || '').split(';')) {
     const eq = part.indexOf('=');
     if (eq < 0) continue;
     const k = part.slice(0, eq).trim();
@@ -339,7 +479,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-// ── Session middleware — assigns a cookie-based session per visitor ───────────
+// ── Session middleware ────────────────────────────────────────────────────────
 function ensureSession(req, res, next) {
   const raw = req.cookies[COOKIE_NAME] || '';
   const sid = /^[0-9a-f]{16}$/.test(raw) ? raw : null;
@@ -349,7 +489,6 @@ function ensureSession(req, res, next) {
     return next();
   }
 
-  // New visitor
   const newId = genId();
   res.setHeader('Set-Cookie',
     `${COOKIE_NAME}=${newId}; Max-Age=${COOKIE_MAX}; HttpOnly; SameSite=Lax; Path=/`
@@ -360,13 +499,15 @@ function ensureSession(req, res, next) {
   next();
 }
 
-// ── IP lock — blocks the paired IP from re-pairing while connected ─────────────
+// ── IP lock ───────────────────────────────────────────────────────────────────
+// Blocks the IP that paired from re-pairing while connected.
+// New IPs can always pair (multi-user support).
 function ipLockCheck(req, res, next) {
   const state = sessions.get(req.sessionId);
   if (!state?.paired) return next();
 
   const ip = getIP(req);
-  if (!state.lockedIP || ip !== state.lockedIP) return next(); // new IP — allow
+  if (!state.lockedIP || ip !== state.lockedIP) return next();
 
   return res.status(200).send(alreadyConnectedPage());
 }
@@ -406,8 +547,9 @@ function alreadyConnectedPage() {
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.get('/',          ensureSession, ipLockCheck, (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'pair.html')));
-app.get('/pair',      ensureSession, ipLockCheck, (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'pair.html')));
+app.get('/',     ensureSession, ipLockCheck, (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'pair.html')));
+app.get('/pair', ensureSession, ipLockCheck, (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'pair.html')));
+
 app.get('/new-session', (req, res) => {
   res.setHeader('Set-Cookie', `${COOKIE_NAME}=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/`);
   res.redirect('/');
@@ -438,7 +580,7 @@ app.post('/pair', ensureSession, ipLockCheck, async (req, res) => {
     if (!state)      return res.status(400).json({ error: 'Session not ready. Reload and try again.' });
     if (!state.sock) return res.status(400).json({ error: 'Socket not ready yet. Wait a moment.' });
     if (state.status !== 'connecting')
-      return res.status(400).json({ error: `Cannot pair — bot is currently ${state.status}.` });
+      return res.status(400).json({ error: `Cannot pair — bot is ${state.status}.` });
 
     const code = await state.sock.requestPairingCode(phone);
     state.pairingCode     = code;
